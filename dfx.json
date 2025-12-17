@@ -1,0 +1,29 @@
+{
+  "canisters": {
+    "gm-icp-canister-backend": {
+      "build": "npx azle gm-icp-canister-backend",
+      "candid": "src/gm-icp-canister-backend/gm-icp-canister-backend.did",
+      "gzip": true,
+      "main": "src/gm-icp-canister-backend/src/index.ts",
+      "tech_stack": {
+        "cdk": {
+          "azle": {}
+        },
+        "language": {
+          "javascript": {},
+          "typescript": {}
+        }
+      },
+      "type": "custom",
+      "wasm": ".azle/gm-icp-canister-backend/gm-icp-canister-backend.wasm"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
