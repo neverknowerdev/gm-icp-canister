@@ -1,10 +1,20 @@
 {
   "canisters": {
-    "gm-icp-canister-backend": {
-      "build": "npx azle gm-icp-canister-backend",
-      "candid": "src/gm-icp-canister-backend/gm-icp-canister-backend.did",
+    "evm_rpc": {
+      "type": "custom",
+      "candid": "https://github.com/internet-computer-protocol/evm-rpc-canister/releases/latest/download/evm_rpc.did",
+      "wasm": "https://github.com/internet-computer-protocol/evm-rpc-canister/releases/latest/download/evm_rpc.wasm.gz",
+      "remote": {
+        "id": {
+          "ic": "7hfb6-caaaa-aaaar-qadga-cai"
+        }
+      }
+    },
+    "gm-icp-canister": {
+      "build": "npx azle build gm-icp-canister",
+      "candid": "src/gm-icp-canister.did",
       "gzip": true,
-      "main": "src/gm-icp-canister-backend/src/index.ts",
+      "main": "src/index.ts",
       "tech_stack": {
         "cdk": {
           "azle": {}
@@ -15,7 +25,12 @@
         }
       },
       "type": "custom",
-      "wasm": ".azle/gm-icp-canister-backend/gm-icp-canister-backend.wasm"
+      "wasm": ".azle/gm-icp-canister/gm-icp-canister.wasm",
+      "metadata": [
+        {
+          "name": "candid:service"
+        }
+      ]
     }
   },
   "defaults": {

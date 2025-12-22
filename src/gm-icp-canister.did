@@ -1,0 +1,4 @@
+service: () -> {
+    greet: (text) -> (text) query;
+    handleEvent: (text, text) -> (null);
+}
