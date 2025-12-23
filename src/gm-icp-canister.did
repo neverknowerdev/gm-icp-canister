@@ -1,4 +1,5 @@
 service: () -> {
     greet: (text) -> (text) query;
     handleEvent: (text, text) -> (null);
+    setConfig: (record {eventSignatures:record {VerifyTwitterByAuthCodeRequested:text; VerifyFarcasterRequested:text}; contracts:record {"Base Mainnet":vec text; Monad:vec text; WorldChain:vec text}}) -> (null);
 }

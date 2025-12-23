@@ -11,7 +11,7 @@
       }
     },
     "gm-icp-canister": {
-      "build": "npx azle build gm-icp-canister",
+      "build": "node scripts/generate-config.js && npx azle build gm-icp-canister",
       "candid": "src/gm-icp-canister.did",
       "gzip": true,
       "main": "src/index.ts",

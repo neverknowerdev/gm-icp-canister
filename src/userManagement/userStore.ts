@@ -1,0 +1,216 @@
+import { StableBTreeMap } from 'azle';
+import { User, UserStore, Wallet } from './userTypes';
+
+// Initialize stable storage
+const usersStorage = new StableBTreeMap<bigint, User>(0);
+const twitterToUserIdStorage = new StableBTreeMap<bigint, bigint>(1);
+const farcasterToUserIdStorage = new StableBTreeMap<bigint, bigint>(2);
+const walletToUserIdStorage = new StableBTreeMap<string, bigint>(3);
+const nextUserIdStorage = new StableBTreeMap<string, bigint>(4);
+
+// Initialize nextUserId if not exists
+function getNextUserId(): bigint {
+    const stored = nextUserIdStorage.get('counter');
+    if (stored.length === 0) {
+        nextUserIdStorage.insert('counter', 1n);
+        return 1n;
+    }
+    return stored[0];
+}
+
+function incrementNextUserId(): bigint {
+    const current = getNextUserId();
+    const next = current + 1n;
+    nextUserIdStorage.insert('counter', next);
+    return current; // Return the ID that was just assigned
+}
+
+/**
+ * Get user by userId
+ */
+export function getUser(userId: bigint): User | null {
+    const user = usersStorage.get(userId);
+    return user.length > 0 ? user[0] : null;
+}
+
+/**
+ * Get user by Twitter ID
+ */
+export function getUserByTwitterId(twitterId: bigint): User | null {
+    const userIdOpt = twitterToUserIdStorage.get(twitterId);
+    if (userIdOpt.length === 0) {
+        return null;
+    }
+    return getUser(userIdOpt[0]);
+}
+
+/**
+ * Get user by Farcaster ID
+ */
+export function getUserByFarcasterId(farcasterId: bigint): User | null {
+    const userIdOpt = farcasterToUserIdStorage.get(farcasterId);
+    if (userIdOpt.length === 0) {
+        return null;
+    }
+    return getUser(userIdOpt[0]);
+}
+
+/**
+ * Get user by wallet address and chain
+ */
+export function getUserByWallet(wallet: string, chain: string): User | null {
+    const key = `${wallet.toLowerCase()}:${chain}`;
+    const userIdOpt = walletToUserIdStorage.get(key);
+    if (userIdOpt.length === 0) {
+        return null;
+    }
+    return getUser(userIdOpt[0]);
+}
+
+/**
+ * Create a new user with a globally unique userId
+ */
+export function createUser(
+    wallet: string,
+    chain: string,
+    twitterId: bigint = 0n,
+    farcasterId: bigint = 0n
+): User {
+    const userId = incrementNextUserId();
+    
+    const user: User = {
+        userId,
+        chains: [chain],
+        twitterId,
+        farcasterId,
+        isVerified: false,
+        verifications: [],
+        primaryWallet: wallet.toLowerCase(),
+        wallets: [{
+            wallet: wallet.toLowerCase(),
+            chain,
+        }],
+    };
+
+    usersStorage.insert(userId, user);
+    
+    if (twitterId > 0n) {
+        twitterToUserIdStorage.insert(twitterId, userId);
+    }
+    
+    if (farcasterId > 0n) {
+        farcasterToUserIdStorage.insert(farcasterId, userId);
+    }
+    
+    const walletKey = `${wallet.toLowerCase()}:${chain}`;
+    walletToUserIdStorage.insert(walletKey, userId);
+
+    return user;
+}
+
+/**
+ * Add wallet to existing user
+ */
+export function addWalletToUser(userId: bigint, wallet: string, chain: string): boolean {
+    const userOpt = usersStorage.get(userId);
+    if (userOpt.length === 0) {
+        return false;
+    }
+
+    const user = userOpt[0];
+    const walletLower = wallet.toLowerCase();
+    const walletKey = `${walletLower}:${chain}`;
+
+    // Check if wallet already exists
+    if (walletToUserIdStorage.get(walletKey).length > 0) {
+        return false; // Wallet already associated with a user
+    }
+
+    // Add chain if not present
+    if (!user.chains.includes(chain)) {
+        user.chains.push(chain);
+    }
+
+    // Add wallet if not present
+    const walletExists = user.wallets.some(
+        w => w.wallet === walletLower && w.chain === chain
+    );
+    if (!walletExists) {
+        user.wallets.push({
+            wallet: walletLower,
+            chain,
+        });
+    }
+
+    usersStorage.insert(userId, user);
+    walletToUserIdStorage.insert(walletKey, userId);
+
+    return true;
+}
+
+/**
+ * Update user's Twitter ID
+ */
+export function updateUserTwitterId(userId: bigint, twitterId: bigint): boolean {
+    const userOpt = usersStorage.get(userId);
+    if (userOpt.length === 0) {
+        return false;
+    }
+
+    const user = userOpt[0];
+    
+    // Remove old Twitter ID mapping if exists
+    if (user.twitterId > 0n) {
+        twitterToUserIdStorage.remove(user.twitterId);
+    }
+
+    user.twitterId = twitterId;
+    
+    if (twitterId > 0n) {
+        twitterToUserIdStorage.insert(twitterId, userId);
+    }
+
+    usersStorage.insert(userId, user);
+    return true;
+}
+
+/**
+ * Update user's Farcaster ID
+ */
+export function updateUserFarcasterId(userId: bigint, farcasterId: bigint): boolean {
+    const userOpt = usersStorage.get(userId);
+    if (userOpt.length === 0) {
+        return false;
+    }
+
+    const user = userOpt[0];
+    
+    // Remove old Farcaster ID mapping if exists
+    if (user.farcasterId > 0n) {
+        farcasterToUserIdStorage.remove(user.farcasterId);
+    }
+
+    user.farcasterId = farcasterId;
+    
+    if (farcasterId > 0n) {
+        farcasterToUserIdStorage.insert(farcasterId, userId);
+    }
+
+    usersStorage.insert(userId, user);
+    return true;
+}
+
+/**
+ * Check if Twitter ID is globally unique
+ */
+export function isTwitterIdUnique(twitterId: bigint): boolean {
+    return twitterToUserIdStorage.get(twitterId).length === 0;
+}
+
+/**
+ * Check if Farcaster ID is globally unique
+ */
+export function isFarcasterIdUnique(farcasterId: bigint): boolean {
+    return farcasterToUserIdStorage.get(farcasterId).length === 0;
+}
+

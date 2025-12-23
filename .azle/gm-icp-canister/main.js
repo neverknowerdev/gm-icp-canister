@@ -5800,6 +5800,17 @@ ${error.stack}`);
 ${error.stack}`);
   }
 }
+function validateUnsignedInteger(errorPrefix, size, number) {
+  if (number < 0) {
+    throw new Error(`${errorPrefix} cannot be negative`);
+  }
+  const maxUnsignedInteger = Math.pow(2, size) - 1;
+  if (number > maxUnsignedInteger) {
+    throw new Error(
+      `${errorPrefix} cannot be greater than ${maxUnsignedInteger} (2^${size} - 1)`
+    );
+  }
+}
 
 // node_modules/azle/src/stable/lib/ic_apis/msg_arg_data.ts
 function msgArgData() {
@@ -6352,14 +6363,953 @@ function createRejectCallback(globalRejectId, reject) {
   });
 }
 
+// node_modules/azle/src/stable/lib/stable_structures/stable_b_tree_map.ts
+var StableBTreeMap = class {
+  memoryId;
+  keySerializable;
+  valueSerializable;
+  constructor(memoryId, keySerializable = stableJson, valueSerializable = stableJson) {
+    if (memoryId < 0) {
+      throw new Error("StableBTreeMap memoryId cannot be negative");
+    }
+    if (memoryId > 253) {
+      throw new Error(
+        "StableBTreeMap memoryId cannot be greater than 253 (memoryId 254 and 255 are reserved by Azle and ic-stable-structures respectively"
+      );
+    }
+    this.memoryId = memoryId;
+    this.keySerializable = keySerializable;
+    this.valueSerializable = valueSerializable;
+    if (globalThis._azleNodejsWasmEnvironment !== true) {
+      if (globalThis._azleIcExperimental !== void 0) {
+        globalThis._azleIcExperimental.stableBTreeMapInit(
+          memoryId.toString()
+        );
+      }
+      if (globalThis._azleIc !== void 0) {
+        globalThis._azleIc.stableBTreeMapInit(memoryId);
+      }
+    }
+  }
+  /**
+   * Checks if the given key exists in the map.
+   *
+   * @param key - The key to check
+   * @returns `true` if the key exists in the map, `false` otherwise
+   */
+  containsKey(key) {
+    if (globalThis._azleIc === void 0 && globalThis._azleIcExperimental === void 0) {
+      return void 0;
+    }
+    const encodedKey = this.keySerializable.toBytes(key);
+    if (globalThis._azleIcExperimental !== void 0) {
+      return globalThis._azleIcExperimental.stableBTreeMapContainsKey(
+        this.memoryId.toString(),
+        encodedKey.buffer instanceof ArrayBuffer ? encodedKey.buffer : new Uint8Array(encodedKey).buffer
+      );
+    }
+    if (globalThis._azleIc !== void 0) {
+      return globalThis._azleIc.stableBTreeMapContainsKey(
+        this.memoryId,
+        encodedKey
+      );
+    }
+    throw new Error(
+      "Neither globalThis._azleIc nor globalThis._azleIcExperimental are defined"
+    );
+  }
+  /**
+   * Retrieves the value stored at the provided key if it exists.
+   *
+   * @param key - The key whose value will be retrieved
+   * @returns The value associated with the key, or undefined if the key doesn't exist
+   */
+  get(key) {
+    if (globalThis._azleIc === void 0 && globalThis._azleIcExperimental === void 0) {
+      return void 0;
+    }
+    const encodedKey = this.keySerializable.toBytes(key);
+    const encodedResult = globalThis._azleIcExperimental !== void 0 ? globalThis._azleIcExperimental.stableBTreeMapGet(
+      this.memoryId.toString(),
+      encodedKey.buffer instanceof ArrayBuffer ? encodedKey.buffer : new Uint8Array(encodedKey).buffer
+    ) : globalThis._azleIc !== void 0 ? globalThis._azleIc.stableBTreeMapGet(
+      this.memoryId,
+      encodedKey
+    ) : (() => {
+      throw new Error(
+        "Neither globalThis._azleIc nor globalThis._azleIcExperimental are defined"
+      );
+    })();
+    if (encodedResult === void 0) {
+      return encodedResult;
+    } else {
+      return this.valueSerializable.fromBytes(
+        encodedResult instanceof Uint8Array ? encodedResult : new Uint8Array(encodedResult)
+      );
+    }
+  }
+  /**
+   * Inserts a value into the map at the provided key.
+   * If the key already exists, its value is updated.
+   *
+   * @param key - The key at which to store the value
+   * @param value - The value to store
+   *
+   * @returns The previous value at the key if it existed, undefined otherwise
+   */
+  insert(key, value) {
+    if (globalThis._azleIc === void 0 && globalThis._azleIcExperimental === void 0) {
+      return void 0;
+    }
+    const encodedKey = this.keySerializable.toBytes(key);
+    const encodedValue = this.valueSerializable.toBytes(value);
+    const encodedResult = globalThis._azleIcExperimental !== void 0 ? globalThis._azleIcExperimental.stableBTreeMapInsert(
+      this.memoryId.toString(),
+      encodedKey.buffer instanceof ArrayBuffer ? encodedKey.buffer : new Uint8Array(encodedKey).buffer,
+      encodedValue.buffer instanceof ArrayBuffer ? encodedValue.buffer : new Uint8Array(encodedValue).buffer
+    ) : globalThis._azleIc !== void 0 ? globalThis._azleIc.stableBTreeMapInsert(
+      this.memoryId,
+      encodedKey,
+      encodedValue
+    ) : (() => {
+      throw new Error(
+        "Neither globalThis._azleIc nor globalThis._azleIcExperimental are defined"
+      );
+    })();
+    if (encodedResult === void 0) {
+      return encodedResult;
+    } else {
+      return this.valueSerializable.fromBytes(
+        encodedResult instanceof Uint8Array ? encodedResult : new Uint8Array(encodedResult)
+      );
+    }
+  }
+  /**
+   * Checks if the map is empty.
+   *
+   * @returns `true` if the map contains no elements, `false` otherwise
+   */
+  isEmpty() {
+    if (globalThis._azleIc === void 0 && globalThis._azleIcExperimental === void 0) {
+      return void 0;
+    }
+    if (globalThis._azleIcExperimental !== void 0) {
+      return globalThis._azleIcExperimental.stableBTreeMapIsEmpty(
+        this.memoryId.toString()
+      );
+    }
+    if (globalThis._azleIc !== void 0) {
+      return globalThis._azleIc.stableBTreeMapIsEmpty(this.memoryId);
+    }
+    throw new Error(
+      "Neither globalThis._azleIc nor globalThis._azleIcExperimental are defined"
+    );
+  }
+  /**
+   * Retrieves the items in the map in byte-level (not based on the JavaScript runtime value) sorted order by key.
+   *
+   * @param startIndex - Optional index at which to start retrieving items (inclusive). Represented as a u32 (max size 2^32 - 1)
+   * @param length - Optional maximum number of items to retrieve. Represented as a u32 (max size 2^32 - 1)
+   *
+   * @returns Array of key-value pair tuples, in byte-level (not based on the JavaScript runtime value) sorted order by key
+   */
+  items(startIndex, length) {
+    if (globalThis._azleIc === void 0 && globalThis._azleIcExperimental === void 0) {
+      return void 0;
+    }
+    if (startIndex !== void 0) {
+      validateUnsignedInteger(
+        "StableBTreeMap.items startIndex",
+        32,
+        startIndex
+      );
+    }
+    if (length !== void 0) {
+      validateUnsignedInteger("StableBTreeMap.items length", 32, length);
+    }
+    const encodedItems = globalThis._azleIcExperimental !== void 0 ? globalThis._azleIcExperimental.stableBTreeMapItems(
+      this.memoryId.toString(),
+      startIndex?.toString() ?? "0",
+      length?.toString() ?? "NOT_SET"
+    ) : globalThis._azleIc !== void 0 ? globalThis._azleIc.stableBTreeMapItems(
+      this.memoryId,
+      startIndex,
+      length
+    ) : (() => {
+      throw new Error(
+        "Neither globalThis._azleIc nor globalThis._azleIcExperimental are defined"
+      );
+    })();
+    return encodedItems.map(([encodedKey, encodedValue]) => {
+      return [
+        this.keySerializable.fromBytes(
+          encodedKey instanceof Uint8Array ? encodedKey : new Uint8Array(encodedKey)
+        ),
+        this.valueSerializable.fromBytes(
+          encodedValue instanceof Uint8Array ? encodedValue : new Uint8Array(encodedValue)
+        )
+      ];
+    });
+  }
+  /**
+   * Retrieves the keys in the map in byte-level (not based on the JavaScript runtime value) sorted order.
+   *
+   * @param startIndex - Optional index at which to start retrieving keys (inclusive). Represented as a u32 (max size 2^32 - 1)
+   * @param length - Optional maximum number of keys to retrieve. Represented as a u32 (max size 2^32 - 1)
+   *
+   * @returns Array of keys in byte-level (not based on the JavaScript runtime value) sorted order
+   */
+  keys(startIndex, length) {
+    if (globalThis._azleIc === void 0 && globalThis._azleIcExperimental === void 0) {
+      return void 0;
+    }
+    if (startIndex !== void 0) {
+      validateUnsignedInteger(
+        "StableBTreeMap.keys startIndex",
+        32,
+        startIndex
+      );
+    }
+    if (length !== void 0) {
+      validateUnsignedInteger("StableBTreeMap.keys length", 32, length);
+    }
+    const encodedKeys = globalThis._azleIcExperimental !== void 0 ? globalThis._azleIcExperimental.stableBTreeMapKeys(
+      this.memoryId.toString(),
+      startIndex?.toString() ?? "0",
+      length?.toString() ?? "NOT_SET"
+    ) : globalThis._azleIc !== void 0 ? globalThis._azleIc.stableBTreeMapKeys(
+      this.memoryId,
+      startIndex,
+      length
+    ) : (() => {
+      throw new Error(
+        "Neither globalThis._azleIc nor globalThis._azleIcExperimental are defined"
+      );
+    })();
+    return encodedKeys.map((encodedKey) => {
+      return this.keySerializable.fromBytes(
+        encodedKey instanceof Uint8Array ? encodedKey : new Uint8Array(encodedKey)
+      );
+    });
+  }
+  /**
+   * Returns the number of key-value pairs in the map.
+   *
+   * @returns The number of key-value pairs in the map. Represented as a u32 (max size 2^32 - 1)
+   */
+  len() {
+    if (globalThis._azleIc === void 0 && globalThis._azleIcExperimental === void 0) {
+      return void 0;
+    }
+    if (globalThis._azleIcExperimental !== void 0) {
+      return Number(
+        globalThis._azleIcExperimental.stableBTreeMapLen(
+          this.memoryId.toString()
+        )
+      );
+    }
+    if (globalThis._azleIc !== void 0) {
+      return globalThis._azleIc.stableBTreeMapLen(this.memoryId);
+    }
+    throw new Error(
+      "Neither globalThis._azleIc nor globalThis._azleIcExperimental are defined"
+    );
+  }
+  /**
+   * Removes a key and its associated value from the map.
+   *
+   * @param key - The key to remove
+   * @returns The value that was associated with the key, or undefined if the key didn't exist
+   */
+  remove(key) {
+    if (globalThis._azleIc === void 0 && globalThis._azleIcExperimental === void 0) {
+      return void 0;
+    }
+    const encodedKey = this.keySerializable.toBytes(key);
+    const encodedValue = globalThis._azleIcExperimental !== void 0 ? globalThis._azleIcExperimental.stableBTreeMapRemove(
+      this.memoryId.toString(),
+      encodedKey.buffer instanceof ArrayBuffer ? encodedKey.buffer : new Uint8Array(encodedKey).buffer
+    ) : globalThis._azleIc !== void 0 ? globalThis._azleIc.stableBTreeMapRemove(
+      this.memoryId,
+      encodedKey
+    ) : (() => {
+      throw new Error(
+        "Neither globalThis._azleIc nor globalThis._azleIcExperimental are defined"
+      );
+    })();
+    if (encodedValue === void 0) {
+      return void 0;
+    } else {
+      return this.valueSerializable.fromBytes(
+        encodedValue instanceof Uint8Array ? encodedValue : new Uint8Array(encodedValue)
+      );
+    }
+  }
+  /**
+   * Retrieves the values in the map in byte-level (not based on the JavaScript runtime value) sorted order by key.
+   *
+   * @param startIndex - Optional index at which to start retrieving values (inclusive). Represented as a u32 (max size 2^32 - 1)
+   * @param length - Optional maximum number of values to retrieve. Represented as a u32 (max size 2^32 - 1)
+   * @returns Array of values, in byte-level (not based on the JavaScript runtime value) sorted order by key
+   */
+  values(startIndex, length) {
+    if (globalThis._azleIc === void 0 && globalThis._azleIcExperimental === void 0) {
+      return void 0;
+    }
+    if (startIndex !== void 0) {
+      validateUnsignedInteger(
+        "StableBTreeMap.values startIndex",
+        32,
+        startIndex
+      );
+    }
+    if (length !== void 0) {
+      validateUnsignedInteger("StableBTreeMap.values length", 32, length);
+    }
+    const encodedValues = globalThis._azleIcExperimental !== void 0 ? globalThis._azleIcExperimental.stableBTreeMapValues(
+      this.memoryId.toString(),
+      startIndex?.toString() ?? "0",
+      length?.toString() ?? "NOT_SET"
+    ) : globalThis._azleIc !== void 0 ? globalThis._azleIc.stableBTreeMapValues(
+      this.memoryId,
+      startIndex,
+      length
+    ) : (() => {
+      throw new Error(
+        "Neither globalThis._azleIc nor globalThis._azleIcExperimental are defined"
+      );
+    })();
+    return encodedValues.map((encodedValue) => {
+      return this.valueSerializable.fromBytes(
+        encodedValue instanceof Uint8Array ? encodedValue : new Uint8Array(encodedValue)
+      );
+    });
+  }
+};
+
 // src/index.ts
 var src_exports = {};
 __export(src_exports, {
   default: () => src_default
 });
-var EVM_RPC_CANISTER_ID = Principal.fromText("ufxgi-4p777-77774-qaadq-cai");
-var _handleEvent_dec, _greet_dec, _init;
-_greet_dec = [query([idl_exports.Text], idl_exports.Text)], _handleEvent_dec = [update([idl_exports.Text, idl_exports.Text], idl_exports.Null)];
+
+// src/utils/evmRpc.ts
+var EVM_RPC_CANISTER_ID = Principal.fromText("7hfb6-caaaa-aaaar-qadga-cai");
+var L2MainnetService = idl_exports.Variant({
+  Alchemy: idl_exports.Null,
+  Ankr: idl_exports.Null,
+  BlockPi: idl_exports.Null,
+  PublicNode: idl_exports.Null,
+  Llama: idl_exports.Null
+});
+var RpcServices = idl_exports.Variant({
+  BaseMainnet: idl_exports.Opt(idl_exports.Vec(L2MainnetService)),
+  WorldChain: idl_exports.Opt(idl_exports.Vec(L2MainnetService)),
+  Monad: idl_exports.Opt(idl_exports.Vec(L2MainnetService))
+});
+var RpcConfig = idl_exports.Record({
+  responseSizeEstimate: idl_exports.Opt(idl_exports.Nat64),
+  responseConsensus: idl_exports.Opt(idl_exports.Variant({
+    Equality: idl_exports.Null,
+    Threshold: idl_exports.Record({
+      total: idl_exports.Opt(idl_exports.Nat8),
+      min: idl_exports.Nat8
+    })
+  }))
+});
+var LogEntryIDL = idl_exports.Record({
+  transactionHash: idl_exports.Opt(idl_exports.Text),
+  blockNumber: idl_exports.Opt(idl_exports.Nat),
+  data: idl_exports.Text,
+  blockHash: idl_exports.Opt(idl_exports.Text),
+  transactionIndex: idl_exports.Opt(idl_exports.Nat),
+  topics: idl_exports.Vec(idl_exports.Text),
+  address: idl_exports.Text,
+  logIndex: idl_exports.Opt(idl_exports.Nat),
+  removed: idl_exports.Bool
+});
+var TransactionReceiptIDL = idl_exports.Record({
+  to: idl_exports.Opt(idl_exports.Text),
+  status: idl_exports.Opt(idl_exports.Nat),
+  root: idl_exports.Opt(idl_exports.Text),
+  transactionHash: idl_exports.Text,
+  blockNumber: idl_exports.Nat,
+  from: idl_exports.Text,
+  logs: idl_exports.Vec(LogEntryIDL),
+  blockHash: idl_exports.Text,
+  type: idl_exports.Text,
+  transactionIndex: idl_exports.Nat,
+  effectiveGasPrice: idl_exports.Nat,
+  logsBloom: idl_exports.Text,
+  contractAddress: idl_exports.Opt(idl_exports.Text),
+  gasUsed: idl_exports.Nat,
+  cumulativeGasUsed: idl_exports.Nat
+});
+var JsonRpcError = idl_exports.Record({
+  code: idl_exports.Int64,
+  message: idl_exports.Text
+});
+var ProviderError = idl_exports.Variant({
+  TooFewCycles: idl_exports.Record({
+    expected: idl_exports.Nat,
+    received: idl_exports.Nat
+  }),
+  MissingRequiredProvider: idl_exports.Null,
+  ProviderNotFound: idl_exports.Null,
+  NoPermission: idl_exports.Null,
+  InvalidRpcConfig: idl_exports.Text
+});
+var RejectionCode = idl_exports.Variant({
+  NoError: idl_exports.Null,
+  CanisterError: idl_exports.Null,
+  SysTransient: idl_exports.Null,
+  DestinationInvalid: idl_exports.Null,
+  Unknown: idl_exports.Null,
+  SysFatal: idl_exports.Null,
+  CanisterReject: idl_exports.Null
+});
+var HttpOutcallError = idl_exports.Variant({
+  IcError: idl_exports.Record({
+    code: RejectionCode,
+    message: idl_exports.Text
+  }),
+  InvalidHttpJsonRpcResponse: idl_exports.Record({
+    status: idl_exports.Nat16,
+    body: idl_exports.Text,
+    parsingError: idl_exports.Opt(idl_exports.Text)
+  })
+});
+var ValidationError = idl_exports.Variant({
+  Custom: idl_exports.Text,
+  InvalidHex: idl_exports.Text
+});
+var RpcError = idl_exports.Variant({
+  JsonRpcError,
+  ProviderError,
+  ValidationError,
+  HttpOutcallError
+});
+var GetTransactionReceiptResult = idl_exports.Variant({
+  Ok: idl_exports.Opt(TransactionReceiptIDL),
+  Err: RpcError
+});
+var RpcService = idl_exports.Variant({
+  Provider: idl_exports.Nat64,
+  Custom: idl_exports.Record({
+    url: idl_exports.Text,
+    headers: idl_exports.Opt(idl_exports.Vec(idl_exports.Record({
+      name: idl_exports.Text,
+      value: idl_exports.Text
+    })))
+  }),
+  BaseMainnet: L2MainnetService,
+  WorldChain: L2MainnetService,
+  Monad: L2MainnetService
+});
+var InconsistentEntry = idl_exports.Record({
+  "_0_": RpcService,
+  "_1_": GetTransactionReceiptResult
+});
+var MultiGetTransactionReceiptResult = idl_exports.Variant({
+  Consistent: GetTransactionReceiptResult,
+  Inconsistent: idl_exports.Vec(InconsistentEntry)
+});
+function getRpcServices(chain) {
+  switch (chain) {
+    case "Base Mainnet":
+      return { BaseMainnet: null };
+    case "WorldChain":
+      return { WorldChain: null };
+    case "Monad":
+      return { Monad: null };
+    default:
+      throw new Error(`Unsupported chain: ${chain}`);
+  }
+}
+async function fetchTransactionReceipt(chain, transactionId) {
+  const rpcServices = getRpcServices(chain);
+  const rpcConfig = {
+    responseSizeEstimate: [1000000n],
+    responseConsensus: []
+  };
+  try {
+    const result = await call(EVM_RPC_CANISTER_ID, "eth_getTransactionReceipt", {
+      args: [rpcServices, rpcConfig, transactionId],
+      paramIdlTypes: [RpcServices, RpcConfig, idl_exports.Text],
+      returnIdlType: MultiGetTransactionReceiptResult
+    });
+    let receiptResult = null;
+    if ("Consistent" in result) {
+      receiptResult = result.Consistent;
+    } else if ("Inconsistent" in result && result.Inconsistent.length > 0) {
+      receiptResult = result.Inconsistent[0]["_1_"];
+    } else {
+      console.error(`No transaction receipt found for ${transactionId}`);
+      return null;
+    }
+    if ("Ok" in receiptResult) {
+      const receiptOpt = receiptResult.Ok;
+      if (receiptOpt.length === 0 || receiptOpt[0] === null) {
+        console.error(`Transaction ${transactionId} not found (receipt is null)`);
+        return null;
+      }
+      const receipt = receiptOpt[0];
+      return {
+        to: receipt.to.length > 0 ? receipt.to[0] : void 0,
+        status: receipt.status.length > 0 ? receipt.status[0] : void 0,
+        root: receipt.root.length > 0 ? receipt.root[0] : void 0,
+        transactionHash: receipt.transactionHash,
+        blockNumber: receipt.blockNumber,
+        from: receipt.from,
+        logs: receipt.logs.map((log2) => ({
+          transactionHash: log2.transactionHash.length > 0 ? log2.transactionHash[0] : void 0,
+          blockNumber: log2.blockNumber.length > 0 ? log2.blockNumber[0] : void 0,
+          data: log2.data,
+          blockHash: log2.blockHash.length > 0 ? log2.blockHash[0] : void 0,
+          transactionIndex: log2.transactionIndex.length > 0 ? log2.transactionIndex[0] : void 0,
+          topics: log2.topics,
+          address: log2.address,
+          logIndex: log2.logIndex.length > 0 ? log2.logIndex[0] : void 0,
+          removed: log2.removed
+        })),
+        blockHash: receipt.blockHash,
+        type: receipt.type,
+        transactionIndex: receipt.transactionIndex,
+        effectiveGasPrice: receipt.effectiveGasPrice,
+        logsBloom: receipt.logsBloom,
+        contractAddress: receipt.contractAddress.length > 0 ? receipt.contractAddress[0] : void 0,
+        gasUsed: receipt.gasUsed,
+        cumulativeGasUsed: receipt.cumulativeGasUsed
+      };
+    } else if ("Err" in receiptResult) {
+      console.error(`RPC Error: ${JSON.stringify(receiptResult.Err)}`);
+      return null;
+    }
+    return null;
+  } catch (error) {
+    console.error(`Error fetching transaction receipt: ${error}`);
+    return null;
+  }
+}
+
+// src/utils/config.ts
+var configCache = null;
+function loadConfig() {
+  if (configCache) {
+    return configCache;
+  }
+  const defaultConfig = {
+    contracts: {
+      "Base Mainnet": [],
+      "WorldChain": [],
+      "Monad": []
+    },
+    eventSignatures: {
+      "VerifyFarcasterRequested": "",
+      "VerifyTwitterByAuthCodeRequested": ""
+    }
+  };
+  configCache = defaultConfig;
+  return configCache;
+}
+function initConfig(config) {
+  configCache = config;
+  console.log("Configuration initialized");
+}
+function getContractAddresses(chain) {
+  const config = loadConfig();
+  return config.contracts[chain] || [];
+}
+function getContractAddress(chain) {
+  const addresses = getContractAddresses(chain);
+  return addresses.length > 0 ? addresses[0] : null;
+}
+function getAllEventSignatures() {
+  const config = loadConfig();
+  return config.eventSignatures;
+}
+
+// src/utils/eventParser.ts
+function parseEvent(log2, contractAddress) {
+  if (log2.topics.length === 0) {
+    return null;
+  }
+  const eventSignatureHash = log2.topics[0];
+  const eventSignatures = getAllEventSignatures();
+  let eventName = null;
+  for (const [name, hash] of Object.entries(eventSignatures)) {
+    if (hash && hash.toLowerCase() === eventSignatureHash.toLowerCase()) {
+      eventName = name;
+      break;
+    }
+  }
+  if (!eventName) {
+    return null;
+  }
+  const args = {};
+  if (log2.topics.length > 1) {
+    args["topic1"] = log2.topics[1];
+  }
+  if (log2.topics.length > 2) {
+    args["topic2"] = log2.topics[2];
+  }
+  if (log2.topics.length > 3) {
+    args["topic3"] = log2.topics[3];
+  }
+  if (log2.data && log2.data !== "0x") {
+    args["data"] = log2.data;
+  }
+  return {
+    eventName,
+    contractAddress,
+    args,
+    logIndex: log2.logIndex || 0n,
+    transactionHash: log2.transactionHash || "",
+    blockNumber: log2.blockNumber || 0n
+  };
+}
+function extractEvents(logs, allowedContracts) {
+  const events = [];
+  for (const log2 of logs) {
+    const contractAddress = log2.address.toLowerCase();
+    const isOurContract = allowedContracts.some(
+      (addr) => addr.toLowerCase() === contractAddress
+    );
+    if (!isOurContract) {
+      continue;
+    }
+    const event = parseEvent(log2, contractAddress);
+    if (event) {
+      events.push(event);
+    }
+  }
+  return events;
+}
+
+// src/userManagement/userStore.ts
+var usersStorage = new StableBTreeMap(0);
+var twitterToUserIdStorage = new StableBTreeMap(1);
+var farcasterToUserIdStorage = new StableBTreeMap(2);
+var walletToUserIdStorage = new StableBTreeMap(3);
+var nextUserIdStorage = new StableBTreeMap(4);
+function getNextUserId() {
+  const stored = nextUserIdStorage.get("counter");
+  if (stored.length === 0) {
+    nextUserIdStorage.insert("counter", 1n);
+    return 1n;
+  }
+  return stored[0];
+}
+function incrementNextUserId() {
+  const current = getNextUserId();
+  const next = current + 1n;
+  nextUserIdStorage.insert("counter", next);
+  return current;
+}
+function getUser(userId) {
+  const user = usersStorage.get(userId);
+  return user.length > 0 ? user[0] : null;
+}
+function getUserByTwitterId(twitterId) {
+  const userIdOpt = twitterToUserIdStorage.get(twitterId);
+  if (userIdOpt.length === 0) {
+    return null;
+  }
+  return getUser(userIdOpt[0]);
+}
+function getUserByFarcasterId(farcasterId) {
+  const userIdOpt = farcasterToUserIdStorage.get(farcasterId);
+  if (userIdOpt.length === 0) {
+    return null;
+  }
+  return getUser(userIdOpt[0]);
+}
+function getUserByWallet(wallet, chain) {
+  const key = `${wallet.toLowerCase()}:${chain}`;
+  const userIdOpt = walletToUserIdStorage.get(key);
+  if (userIdOpt.length === 0) {
+    return null;
+  }
+  return getUser(userIdOpt[0]);
+}
+function createUser(wallet, chain, twitterId = 0n, farcasterId = 0n) {
+  const userId = incrementNextUserId();
+  const user = {
+    userId,
+    chains: [chain],
+    twitterId,
+    farcasterId,
+    isVerified: false,
+    verifications: [],
+    primaryWallet: wallet.toLowerCase(),
+    wallets: [{
+      wallet: wallet.toLowerCase(),
+      chain
+    }]
+  };
+  usersStorage.insert(userId, user);
+  if (twitterId > 0n) {
+    twitterToUserIdStorage.insert(twitterId, userId);
+  }
+  if (farcasterId > 0n) {
+    farcasterToUserIdStorage.insert(farcasterId, userId);
+  }
+  const walletKey = `${wallet.toLowerCase()}:${chain}`;
+  walletToUserIdStorage.insert(walletKey, userId);
+  return user;
+}
+function addWalletToUser(userId, wallet, chain) {
+  const userOpt = usersStorage.get(userId);
+  if (userOpt.length === 0) {
+    return false;
+  }
+  const user = userOpt[0];
+  const walletLower = wallet.toLowerCase();
+  const walletKey = `${walletLower}:${chain}`;
+  if (walletToUserIdStorage.get(walletKey).length > 0) {
+    return false;
+  }
+  if (!user.chains.includes(chain)) {
+    user.chains.push(chain);
+  }
+  const walletExists = user.wallets.some(
+    (w) => w.wallet === walletLower && w.chain === chain
+  );
+  if (!walletExists) {
+    user.wallets.push({
+      wallet: walletLower,
+      chain
+    });
+  }
+  usersStorage.insert(userId, user);
+  walletToUserIdStorage.insert(walletKey, userId);
+  return true;
+}
+function updateUserTwitterId(userId, twitterId) {
+  const userOpt = usersStorage.get(userId);
+  if (userOpt.length === 0) {
+    return false;
+  }
+  const user = userOpt[0];
+  if (user.twitterId > 0n) {
+    twitterToUserIdStorage.remove(user.twitterId);
+  }
+  user.twitterId = twitterId;
+  if (twitterId > 0n) {
+    twitterToUserIdStorage.insert(twitterId, userId);
+  }
+  usersStorage.insert(userId, user);
+  return true;
+}
+function updateUserFarcasterId(userId, farcasterId) {
+  const userOpt = usersStorage.get(userId);
+  if (userOpt.length === 0) {
+    return false;
+  }
+  const user = userOpt[0];
+  if (user.farcasterId > 0n) {
+    farcasterToUserIdStorage.remove(user.farcasterId);
+  }
+  user.farcasterId = farcasterId;
+  if (farcasterId > 0n) {
+    farcasterToUserIdStorage.insert(farcasterId, userId);
+  }
+  usersStorage.insert(userId, user);
+  return true;
+}
+
+// src/utils/smartContract.ts
+async function callCreateUser(contractAddress, chain, userId, wallet, twitterId, farcasterId) {
+  try {
+    console.log(`Calling createUser on contract ${contractAddress}:`);
+    console.log(`  userId: ${userId}`);
+    console.log(`  wallet: ${wallet}`);
+    console.log(`  twitterId: ${twitterId}`);
+    console.log(`  farcasterId: ${farcasterId}`);
+    return true;
+  } catch (error) {
+    console.error(`Error calling createUser: ${error}`);
+    return false;
+  }
+}
+async function callAddUser(contractAddress, chain, userId, userData) {
+  try {
+    console.log(`Calling addUser on contract ${contractAddress}:`);
+    console.log(`  userId: ${userId}`);
+    console.log(`  userData:`, JSON.stringify(userData));
+    return true;
+  } catch (error) {
+    console.error(`Error calling addUser: ${error}`);
+    return false;
+  }
+}
+
+// src/events/verifyTwitter.ts
+async function verifyTwitter(event, chain, transactionFrom) {
+  console.log(`Processing VerifyTwitterByAuthCodeRequested event`);
+  console.log(`Event args: ${JSON.stringify(event.args)}`);
+  const wallet = transactionFrom.toLowerCase();
+  const twitterId = event.args.topic1 ? BigInt(event.args.topic1) : 0n;
+  if (twitterId === 0n) {
+    console.error("Invalid Twitter ID in event");
+    return;
+  }
+  const existingUserByTwitter = getUserByTwitterId(twitterId);
+  if (existingUserByTwitter) {
+    console.log(`Twitter ID ${twitterId} already exists for user ${existingUserByTwitter.userId}`);
+    const walletAdded = addWalletToUser(existingUserByTwitter.userId, wallet, chain);
+    if (walletAdded) {
+      console.log(`Added wallet ${wallet} on ${chain} to user ${existingUserByTwitter.userId}`);
+      const updatedUser = getUser(existingUserByTwitter.userId);
+      if (updatedUser) {
+        const contractAddress = getContractAddress(chain);
+        if (contractAddress) {
+          await callAddUser(contractAddress, chain, updatedUser.userId, updatedUser);
+        }
+      }
+    } else {
+      console.error(`Failed to add wallet ${wallet} to user ${existingUserByTwitter.userId}`);
+    }
+  } else {
+    const existingUserByWallet = getUserByWallet(wallet, chain);
+    if (existingUserByWallet) {
+      console.log(`Wallet ${wallet} exists, updating Twitter ID`);
+      updateUserTwitterId(existingUserByWallet.userId, twitterId);
+      const updatedUser = getUser(existingUserByWallet.userId);
+      if (updatedUser) {
+        const contractAddress = getContractAddress(chain);
+        if (contractAddress) {
+          await callAddUser(contractAddress, chain, updatedUser.userId, updatedUser);
+        }
+      }
+    } else {
+      const newUser = createUser(wallet, chain, twitterId, 0n);
+      console.log(`Created new user ${newUser.userId} with Twitter ID ${twitterId}`);
+      const contractAddress = getContractAddress(chain);
+      if (contractAddress) {
+        await callCreateUser(contractAddress, chain, newUser.userId, wallet, twitterId, 0n);
+      }
+    }
+  }
+}
+
+// src/events/verifyFarcaster.ts
+async function verifyFarcaster(event, chain, transactionFrom) {
+  console.log(`Processing VerifyFarcasterRequested event`);
+  console.log(`Event args: ${JSON.stringify(event.args)}`);
+  const wallet = transactionFrom.toLowerCase();
+  const farcasterId = event.args.topic1 ? BigInt(event.args.topic1) : 0n;
+  if (farcasterId === 0n) {
+    console.error("Invalid Farcaster ID in event");
+    return;
+  }
+  const existingUserByFarcaster = getUserByFarcasterId(farcasterId);
+  if (existingUserByFarcaster) {
+    console.log(`Farcaster ID ${farcasterId} already exists for user ${existingUserByFarcaster.userId}`);
+    const walletAdded = addWalletToUser(existingUserByFarcaster.userId, wallet, chain);
+    if (walletAdded) {
+      console.log(`Added wallet ${wallet} on ${chain} to user ${existingUserByFarcaster.userId}`);
+      const updatedUser = getUser(existingUserByFarcaster.userId);
+      if (updatedUser) {
+        const contractAddress = getContractAddress(chain);
+        if (contractAddress) {
+          await callAddUser(contractAddress, chain, updatedUser.userId, updatedUser);
+        }
+      }
+    } else {
+      console.error(`Failed to add wallet ${wallet} to user ${existingUserByFarcaster.userId}`);
+    }
+  } else {
+    const existingUserByWallet = getUserByWallet(wallet, chain);
+    if (existingUserByWallet) {
+      console.log(`Wallet ${wallet} exists, updating Farcaster ID`);
+      updateUserFarcasterId(existingUserByWallet.userId, farcasterId);
+      const updatedUser = getUser(existingUserByWallet.userId);
+      if (updatedUser) {
+        const contractAddress = getContractAddress(chain);
+        if (contractAddress) {
+          await callAddUser(contractAddress, chain, updatedUser.userId, updatedUser);
+        }
+      }
+    } else {
+      const newUser = createUser(wallet, chain, 0n, farcasterId);
+      console.log(`Created new user ${newUser.userId} with Farcaster ID ${farcasterId}`);
+      const contractAddress = getContractAddress(chain);
+      if (contractAddress) {
+        await callCreateUser(contractAddress, chain, newUser.userId, wallet, 0n, farcasterId);
+      }
+    }
+  }
+}
+
+// src/eventProcessor.ts
+var EVENT_HANDLERS = {
+  "VerifyTwitterByAuthCodeRequested": verifyTwitter,
+  "VerifyFarcasterRequested": verifyFarcaster
+};
+async function processEvent(chain, transactionId) {
+  console.log(`Processing event for chain: ${chain}, tx: ${transactionId}`);
+  const allowedContracts = getContractAddresses(chain);
+  if (allowedContracts.length === 0) {
+    console.error(`No contracts configured for chain: ${chain}`);
+    return;
+  }
+  const receipt = await fetchTransactionReceipt(chain, transactionId);
+  if (!receipt) {
+    console.error(`Failed to fetch transaction receipt for ${transactionId}`);
+    return;
+  }
+  if (receipt.status !== void 0 && receipt.status !== 1n) {
+    console.error(`Transaction ${transactionId} failed (status: ${receipt.status})`);
+    return;
+  }
+  const toAddress = receipt.to?.toLowerCase();
+  if (!toAddress) {
+    console.error(`Transaction ${transactionId} is not a contract call (no 'to' address)`);
+    return;
+  }
+  const isOurContract = allowedContracts.some(
+    (addr) => addr.toLowerCase() === toAddress
+  );
+  if (!isOurContract) {
+    console.log(`Transaction ${transactionId} is not to one of our contracts. Ignoring.`);
+    return;
+  }
+  console.log(`Transaction ${transactionId} verified - from our contract ${toAddress}`);
+  const events = extractEvents(receipt.logs, allowedContracts);
+  console.log(`Found ${events.length} events from our contracts`);
+  if (events.length === 0) {
+    console.log(`No relevant events found in transaction ${transactionId}`);
+    return;
+  }
+  for (const event of events) {
+    const handler = EVENT_HANDLERS[event.eventName];
+    if (handler) {
+      console.log(`Dispatching event ${event.eventName} to handler`);
+      try {
+        await handler(event, chain, receipt.from);
+      } catch (error) {
+        console.error(`Error handling event ${event.eventName}: ${error}`);
+      }
+    } else {
+      console.log(`No handler found for event ${event.eventName}. Ignoring.`);
+    }
+  }
+}
+
+// src/index.ts
+var _setConfig_dec, _handleEvent_dec, _greet_dec, _init;
+_greet_dec = [query([idl_exports.Text], idl_exports.Text)], _handleEvent_dec = [update([idl_exports.Text, idl_exports.Text], idl_exports.Null)], _setConfig_dec = [update([idl_exports.Record({
+  contracts: idl_exports.Record({
+    "Base Mainnet": idl_exports.Vec(idl_exports.Text),
+    "WorldChain": idl_exports.Vec(idl_exports.Text),
+    "Monad": idl_exports.Vec(idl_exports.Text)
+  }),
+  eventSignatures: idl_exports.Record({
+    "VerifyFarcasterRequested": idl_exports.Text,
+    "VerifyTwitterByAuthCodeRequested": idl_exports.Text
+  })
+})], idl_exports.Null)];
 var src_default = class {
   constructor() {
     __runInitializers(_init, 5, this);
@@ -6368,129 +7318,26 @@ var src_default = class {
     return `Hello, ${name}!`;
   }
   async handleEvent(chain, transactionId) {
-    if (chain !== "Base Mainnet") {
-      console.log(`Unsupported chain: ${chain}. Only 'Base Mainnet' is supported for now.`);
-      return null;
-    }
-    const L2MainnetService = idl_exports.Variant({
-      Alchemy: idl_exports.Null,
-      Ankr: idl_exports.Null,
-      BlockPi: idl_exports.Null,
-      PublicNode: idl_exports.Null
-    });
-    const RpcServices = idl_exports.Variant({
-      BaseMainnet: idl_exports.Opt(idl_exports.Vec(L2MainnetService))
-    });
-    const RpcConfig = idl_exports.Record({
-      responseSizeEstimate: idl_exports.Opt(idl_exports.Nat64)
-    });
-    const Hash2 = idl_exports.Text;
-    const LogEntry = idl_exports.Record({
-      address: idl_exports.Text,
-      topics: idl_exports.Vec(idl_exports.Text),
-      data: idl_exports.Text,
-      blockNumber: idl_exports.Text,
-      transactionHash: idl_exports.Text,
-      transactionIndex: idl_exports.Text,
-      blockHash: idl_exports.Text,
-      logIndex: idl_exports.Text,
-      removed: idl_exports.Bool
-    });
-    const TransactionReceipt = idl_exports.Record({
-      transactionHash: idl_exports.Text,
-      transactionIndex: idl_exports.Text,
-      blockHash: idl_exports.Text,
-      blockNumber: idl_exports.Text,
-      from: idl_exports.Text,
-      to: idl_exports.Opt(idl_exports.Text),
-      cumulativeGasUsed: idl_exports.Text,
-      gasUsed: idl_exports.Text,
-      contractAddress: idl_exports.Opt(idl_exports.Text),
-      logs: idl_exports.Vec(LogEntry),
-      logsBloom: idl_exports.Text,
-      status: idl_exports.Text
-    });
-    const MultiRpcResult = idl_exports.Variant({
-      Consistent: idl_exports.Opt(TransactionReceipt),
-      Inconsistent: idl_exports.Vec(idl_exports.Opt(TransactionReceipt))
-    });
     try {
-      const rpcServices = {
-        BaseMainnet: [
-          [
-            { Alchemy: null },
-            { Ankr: null },
-            { BlockPi: null },
-            { PublicNode: null }
-          ]
-        ]
-      };
-      const rpcConfig = {
-        responseSizeEstimate: [1000000n]
-        // 1MB estimate
-      };
-      const result = await call(EVM_RPC_CANISTER_ID, "eth_getTransactionReceipt", {
-        args: [rpcServices, rpcConfig, transactionId],
-        paramIdlTypes: [RpcServices, RpcConfig, Hash2],
-        returnIdlType: MultiRpcResult
-      });
-      console.log(`Raw result: ${JSON.stringify(result)}`);
-      if ("Consistent" in result && result.Consistent.length > 0) {
-        const receipt = result.Consistent[0];
-        if (receipt && receipt.logs) {
-          console.log(`Transaction Receipt for ${transactionId}:`);
-          console.log(`Block Number: ${receipt.blockNumber}`);
-          console.log(`Status: ${receipt.status}`);
-          console.log(`Number of logs: ${receipt.logs.length}`);
-          console.log("\nEvent Logs:");
-          receipt.logs.forEach((log2, index) => {
-            console.log(`
-Log ${index + 1}:`);
-            console.log(`  Address: ${log2.address}`);
-            console.log(`  Topics: ${JSON.stringify(log2.topics)}`);
-            console.log(`  Data: ${log2.data}`);
-            console.log(`  Block Number: ${log2.blockNumber}`);
-            console.log(`  Transaction Hash: ${log2.transactionHash}`);
-            console.log(`  Log Index: ${log2.logIndex}`);
-          });
-        } else {
-          console.log(`Transaction ${transactionId} not found or receipt is null.`);
-        }
-      } else if ("Inconsistent" in result && result.Inconsistent.length > 0) {
-        const receipt = result.Inconsistent[0];
-        if (receipt && receipt.logs) {
-          console.log(`Transaction Receipt for ${transactionId} (inconsistent results, using first):`);
-          console.log(`Block Number: ${receipt.blockNumber}`);
-          console.log(`Status: ${receipt.status}`);
-          console.log(`Number of logs: ${receipt.logs.length}`);
-          console.log("\nEvent Logs:");
-          receipt.logs.forEach((log2, index) => {
-            console.log(`
-Log ${index + 1}:`);
-            console.log(`  Address: ${log2.address}`);
-            console.log(`  Topics: ${JSON.stringify(log2.topics)}`);
-            console.log(`  Data: ${log2.data}`);
-            console.log(`  Block Number: ${log2.blockNumber}`);
-            console.log(`  Transaction Hash: ${log2.transactionHash}`);
-            console.log(`  Log Index: ${log2.logIndex}`);
-          });
-        } else {
-          console.log(`Transaction ${transactionId} not found or receipt is null (inconsistent results).`);
-          console.log(`Receipt value: ${JSON.stringify(receipt)}`);
-        }
-      } else {
-        console.log(`No transaction receipt found for ${transactionId}.`);
-        console.log(`Result structure: ${JSON.stringify(result)}`);
-      }
+      await processEvent(chain, transactionId);
     } catch (error) {
-      console.error(`Error fetching transaction receipt: ${error}`);
+      console.error(`Error processing event: ${error}`);
+      if (error.message) {
+        console.error(`Error message: ${error.message}`);
+      }
     }
+    return null;
+  }
+  setConfig(config) {
+    initConfig(config);
+    console.log("Configuration updated successfully");
     return null;
   }
 };
 _init = __decoratorStart(null);
 __decorateElement(_init, 1, "greet", _greet_dec, src_default);
 __decorateElement(_init, 1, "handleEvent", _handleEvent_dec, src_default);
+__decorateElement(_init, 1, "setConfig", _setConfig_dec, src_default);
 __decoratorMetadata(_init, src_default);
 
 // <stdin>

@@ -5,9 +5,24 @@
   },
   "name": "gm-icp-canister",
   "private": true,
+  "scripts": {
+    "generate-config": "node scripts/generate-config.js",
+    "build": "npm run generate-config && dfx build --network ic",
+    "build:local": "npm run generate-config && dfx build",
+    "deploy": "npm run generate-config && dfx deploy --network ic --identity mainnet",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
   "dependencies": {
     "@dfinity/candid": "^3.4.3",
     "@dfinity/principal": "^3.4.3",
     "azle": "0.33.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.0"
   }
 }
