@@ -4,12 +4,131 @@ import { extractEvents } from './utils/eventParser';
 import { verifyTwitter } from './events/verifyTwitter';
 import { verifyFarcaster } from './events/verifyFarcaster';
 import { getContractAddresses } from './utils/config';
+import { workerManager } from './workers/workerManager';
+import { Batch } from './workers/twitter/types';
 
 // Event handler registry
 const EVENT_HANDLERS: Record<string, (event: ParsedEvent, chain: string, transactionFrom: string) => Promise<void>> = {
     'VerifyTwitterByAuthCodeRequested': verifyTwitter,
     'VerifyFarcasterRequested': verifyFarcaster,
+    'twitterMintingProcessed': handleTwitterMintingProcessed,
+    'farcasterMintingProcessed': handleFarcasterMintingProcessed,
 };
+
+/**
+ * Handles twitterMintingProcessed event
+ * Automatically triggers Twitter worker processing
+ */
+async function handleTwitterMintingProcessed(
+    event: ParsedEvent,
+    chain: string,
+    transactionFrom: string
+): Promise<void> {
+    console.log('Processing twitterMintingProcessed event');
+    
+    if (!workerManager.isTwitterWorkerInitialized()) {
+        console.warn('Twitter worker not initialized, skipping minting event');
+        return;
+    }
+
+    try {
+        // Parse event args
+        // Expected: twitterMintingProcessed(uint32 indexed mintingDayTimestamp, Batch[] batches)
+        const mintingDayTimestamp = event.args.topic1 ? Number(BigInt(event.args.topic1)) : 0;
+        
+        // Parse batches from event data
+        // This is a simplified version - actual parsing would depend on event encoding
+        const batches: Batch[] = [];
+        if (event.args.data) {
+            // Decode batches from event data
+            // In production, you'd properly decode the ABI-encoded data
+            try {
+                const decoded = JSON.parse(event.args.data);
+                if (Array.isArray(decoded)) {
+                    batches.push(...decoded.map((b: any) => ({
+                        startIndex: BigInt(b.startIndex || 0),
+                        endIndex: BigInt(b.endIndex || 0),
+                        nextCursor: b.nextCursor || '',
+                        errorCount: b.errorCount || 0,
+                    })));
+                }
+            } catch (e) {
+                console.error('Error parsing batches from event:', e);
+            }
+        }
+
+        if (mintingDayTimestamp === 0 || batches.length === 0) {
+            console.error('Invalid twitterMintingProcessed event data');
+            return;
+        }
+
+        // Process the minting event
+        const result = await workerManager.processTwitterMintingEvent(mintingDayTimestamp, batches);
+        
+        if (result.canExec && result.transactions) {
+            console.log(`Twitter worker generated ${result.transactions.length} transactions`);
+            // In production, you would execute these transactions
+            // For now, we just log them
+        } else {
+            console.log(`Twitter worker result: ${result.message || 'No transactions to execute'}`);
+        }
+    } catch (error: any) {
+        console.error(`Error handling twitterMintingProcessed event: ${error}`);
+    }
+}
+
+/**
+ * Handles farcasterMintingProcessed event
+ * Automatically triggers Farcaster worker processing
+ */
+async function handleFarcasterMintingProcessed(
+    event: ParsedEvent,
+    chain: string,
+    transactionFrom: string
+): Promise<void> {
+    console.log('Processing farcasterMintingProcessed event');
+    
+    if (!workerManager.isFarcasterWorkerInitialized()) {
+        console.warn('Farcaster worker not initialized, skipping minting event');
+        return;
+    }
+
+    try {
+        const mintingDayTimestamp = event.args.topic1 ? Number(BigInt(event.args.topic1)) : 0;
+        
+        const batches: Batch[] = [];
+        if (event.args.data) {
+            try {
+                const decoded = JSON.parse(event.args.data);
+                if (Array.isArray(decoded)) {
+                    batches.push(...decoded.map((b: any) => ({
+                        startIndex: BigInt(b.startIndex || 0),
+                        endIndex: BigInt(b.endIndex || 0),
+                        nextCursor: b.nextCursor || '',
+                        errorCount: b.errorCount || 0,
+                    })));
+                }
+            } catch (e) {
+                console.error('Error parsing batches from event:', e);
+            }
+        }
+
+        if (mintingDayTimestamp === 0 || batches.length === 0) {
+            console.error('Invalid farcasterMintingProcessed event data');
+            return;
+        }
+
+        const result = await workerManager.processFarcasterMintingEvent(mintingDayTimestamp, batches);
+        
+        if (result.canExec && result.transactions) {
+            console.log(`Farcaster worker generated ${result.transactions.length} transactions`);
+        } else {
+            console.log(`Farcaster worker result: ${result.message || 'No transactions to execute'}`);
+        }
+    } catch (error: any) {
+        console.error(`Error handling farcasterMintingProcessed event: ${error}`);
+    }
+}
 
 /**
  * Main event processor entry point

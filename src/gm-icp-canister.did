@@ -2,4 +2,10 @@ service: () -> {
     greet: (text) -> (text) query;
     handleEvent: (text, text) -> (null);
     setConfig: (record {eventSignatures:record {VerifyTwitterByAuthCodeRequested:text; VerifyFarcasterRequested:text}; contracts:record {"Base Mainnet":vec text; Monad:vec text; WorldChain:vec text}}) -> (null);
+    initializeTwitterWorker: (record {contractAddress:text; chain:text; tweetLookupURL:text; serverURLPrefix:text; concurrencyLimit:nat32; twitterOptimizedServerHost:text}, record {bearerToken:text; optimizedAPISecretKey:text; authHeaderName:text}) -> (null);
+    initializeFarcasterWorker: (record {contractAddress:text; chain:text; farcasterAPIURL:text; serverURLPrefix:text; concurrencyLimit:nat32}, record {apiKey:text; bearerToken:opt text}) -> (null);
+    processTwitterMintingEvent: (nat32, vec record {startIndex:nat64; endIndex:nat64; nextCursor:text; errorCount:nat8}) -> (record {canExec:bool; message:opt text});
+    processFarcasterMintingEvent: (nat32, vec record {startIndex:nat64; endIndex:nat64; nextCursor:text; errorCount:nat8}) -> (record {canExec:bool; message:opt text});
+    isTwitterWorkerInitialized: () -> (bool) query;
+    isFarcasterWorkerInitialized: () -> (bool) query;
 }
