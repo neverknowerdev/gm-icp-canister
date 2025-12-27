@@ -1,10 +1,11 @@
-import { query, update, IDL } from 'azle';
+import { query, update, IDL, ic } from 'azle';
 import { processEvent } from './eventProcessor';
 import { initConfig } from './utils/config';
 import { workerManager, TwitterWorkerSecrets, FarcasterWorkerSecrets } from './workers/workerManager';
 import { TwitterWorkerConfig } from './workers/twitter/types';
 import { FarcasterWorkerConfig } from './workers/farcaster/types';
-import { Batch } from './workers/twitter/types';
+import { initializeMintingScheduler } from './minting/mintingScheduler';
+import { startMinting } from './minting/mintingProcessor';
 
 interface Config {
     contracts: {
@@ -16,9 +17,34 @@ interface Config {
 }
 
 export default class {
+    constructor() {
+        // Initialize minting scheduler on canister creation
+        // This will set up the timer to run daily at 2:00 AM
+        try {
+            initializeMintingScheduler();
+        } catch (error: any) {
+            console.error(`Error initializing minting scheduler: ${error}`);
+        }
+    }
+
     @query([IDL.Text], IDL.Text)
     greet(name: string): string {
         return `Hello, ${name}!`;
+    }
+
+    /**
+     * Timer callback - called by ICP timer system
+     * This is an internal method called automatically at the scheduled time (2:00 AM daily)
+     */
+    @update([], IDL.Null)
+    async timerCallback(): Promise<null> {
+        console.log('Timer callback fired - starting minting process');
+        try {
+            await startMinting();
+        } catch (error: any) {
+            console.error(`Error in timer callback: ${error}`);
+        }
+        return null;
     }
 
     @update([IDL.Text, IDL.Text], IDL.Null)
@@ -93,75 +119,9 @@ export default class {
         return null;
     }
 
-    /**
-     * Process Twitter Minting Event
-     * Called when a twitterMintingProcessed event is detected
-     */
-    @update([IDL.Nat32, IDL.Vec(IDL.Record({
-        startIndex: IDL.Nat64,
-        endIndex: IDL.Nat64,
-        nextCursor: IDL.Text,
-        errorCount: IDL.Nat8,
-    }))], IDL.Record({
-        canExec: IDL.Bool,
-        message: IDL.Opt(IDL.Text),
-    }))
-    async processTwitterMintingEvent(
-        mintingDayTimestamp: number,
-        batches: Batch[]
-    ): Promise<{ canExec: boolean; message?: string }> {
-        try {
-            const result = await workerManager.processTwitterMintingEvent(
-                mintingDayTimestamp,
-                batches
-            );
-            return {
-                canExec: result.canExec,
-                message: result.message,
-            };
-        } catch (error: any) {
-            console.error(`Error processing Twitter minting event: ${error}`);
-            return {
-                canExec: false,
-                message: `Error: ${error.message || error}`,
-            };
-        }
-    }
-
-    /**
-     * Process Farcaster Minting Event
-     * Called when a farcasterMintingProcessed event is detected
-     */
-    @update([IDL.Nat32, IDL.Vec(IDL.Record({
-        startIndex: IDL.Nat64,
-        endIndex: IDL.Nat64,
-        nextCursor: IDL.Text,
-        errorCount: IDL.Nat8,
-    }))], IDL.Record({
-        canExec: IDL.Bool,
-        message: IDL.Opt(IDL.Text),
-    }))
-    async processFarcasterMintingEvent(
-        mintingDayTimestamp: number,
-        batches: Batch[]
-    ): Promise<{ canExec: boolean; message?: string }> {
-        try {
-            const result = await workerManager.processFarcasterMintingEvent(
-                mintingDayTimestamp,
-                batches
-            );
-            return {
-                canExec: result.canExec,
-                message: result.message,
-            };
-        } catch (error: any) {
-            console.error(`Error processing Farcaster minting event: ${error}`);
-            return {
-                canExec: false,
-                message: `Error: ${error.message || error}`,
-            };
-        }
-    }
+    // NOTE: processTwitterMintingEvent and processFarcasterMintingEvent have been removed
+    // Minting now happens internally via timer-based scheduling (daily at 2:00 AM)
+    // The minting process is no longer exposed externally
 
     /**
      * Check if Twitter worker is initialized

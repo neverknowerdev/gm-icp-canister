@@ -20,7 +20,19 @@ declare module 'azle' {
     export const IDL: any;
     export const Principal: {
         fromText(text: string): any;
+        fromUint8Array(bytes: Uint8Array): any;
     };
     export function call(canisterId: any, method: string, options: any): Promise<any>;
+    export const ic: {
+        id(): Principal;
+    };
+}
+
+// Global ic object type
+declare global {
+    var ic: {
+        id(): Principal;
+        setTimer(timestamp: bigint): void;
+    };
 }
 
