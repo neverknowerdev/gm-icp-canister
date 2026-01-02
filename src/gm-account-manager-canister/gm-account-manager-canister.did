@@ -1,0 +1,12 @@
+service: () -> {
+    greet: (text) -> (text) query;
+    handleEvent: (text, text) -> (null);
+    setConfig: (record {eventSignatures:record {VerifyTwitterByAuthCodeRequested:text; VerifyFarcasterRequested:text}; contracts:record {"Base Mainnet":vec text; Monad:vec text; WorldChain:vec text}}) -> (null);
+    getUser: (nat64) -> (opt record {userId:nat64; chains:vec text; twitterId:nat64; farcasterId:nat64; isVerified:bool; verifications:vec text; primaryWallet:text; primaryChain:text; wallets:vec record {wallet:text; chain:text}}) query;
+    getUserByTwitterId: (nat64) -> (opt record {userId:nat64; chains:vec text; twitterId:nat64; farcasterId:nat64; isVerified:bool; verifications:vec text; primaryWallet:text; primaryChain:text; wallets:vec record {wallet:text; chain:text}}) query;
+    getUserByFarcasterId: (nat64) -> (opt record {userId:nat64; chains:vec text; twitterId:nat64; farcasterId:nat64; isVerified:bool; verifications:vec text; primaryWallet:text; primaryChain:text; wallets:vec record {wallet:text; chain:text}}) query;
+    getUsers: (vec nat64) -> (vec record {userId:nat64; chains:vec text; twitterId:nat64; farcasterId:nat64; isVerified:bool; verifications:vec text; primaryWallet:text; primaryChain:text; wallets:vec record {wallet:text; chain:text}}) query;
+    getTwitterUsers: (nat32, nat64, nat64) -> (vec record {userId:nat64; accountId:nat64; walletAddress:text}) query;
+    getFarcasterUsers: (nat32, nat64, nat64) -> (vec record {userId:nat64; accountId:nat64; walletAddress:text}) query;
+}
+

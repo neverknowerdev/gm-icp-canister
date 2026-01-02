@@ -77,7 +77,7 @@ export function createUser(
     farcasterId: bigint = 0n
 ): User {
     const userId = incrementNextUserId();
-    
+
     const user: User = {
         userId,
         chains: [chain],
@@ -86,6 +86,7 @@ export function createUser(
         isVerified: false,
         verifications: [],
         primaryWallet: wallet.toLowerCase(),
+        primaryChain: chain,
         wallets: [{
             wallet: wallet.toLowerCase(),
             chain,
@@ -93,15 +94,15 @@ export function createUser(
     };
 
     usersStorage.insert(userId, user);
-    
+
     if (twitterId > 0n) {
         twitterToUserIdStorage.insert(twitterId, userId);
     }
-    
+
     if (farcasterId > 0n) {
         farcasterToUserIdStorage.insert(farcasterId, userId);
     }
-    
+
     const walletKey = `${wallet.toLowerCase()}:${chain}`;
     walletToUserIdStorage.insert(walletKey, userId);
 
@@ -158,14 +159,14 @@ export function updateUserTwitterId(userId: bigint, twitterId: bigint): boolean 
     }
 
     const user = userOpt[0];
-    
+
     // Remove old Twitter ID mapping if exists
     if (user.twitterId > 0n) {
         twitterToUserIdStorage.remove(user.twitterId);
     }
 
     user.twitterId = twitterId;
-    
+
     if (twitterId > 0n) {
         twitterToUserIdStorage.insert(twitterId, userId);
     }
@@ -184,14 +185,14 @@ export function updateUserFarcasterId(userId: bigint, farcasterId: bigint): bool
     }
 
     const user = userOpt[0];
-    
+
     // Remove old Farcaster ID mapping if exists
     if (user.farcasterId > 0n) {
         farcasterToUserIdStorage.remove(user.farcasterId);
     }
 
     user.farcasterId = farcasterId;
-    
+
     if (farcasterId > 0n) {
         farcasterToUserIdStorage.insert(farcasterId, userId);
     }
@@ -212,5 +213,89 @@ export function isTwitterIdUnique(twitterId: bigint): boolean {
  */
 export function isFarcasterIdUnique(farcasterId: bigint): boolean {
     return farcasterToUserIdStorage.get(farcasterId).length === 0;
+}
+
+/**
+ * Get Twitter users with pagination
+ * Returns array of {userId, accountId, walletAddress} where accountId is Twitter ID
+ * @param chainId The chain ID to get wallet address for
+ * @param startIndex Starting index for pagination
+ * @param limit Number of users to fetch
+ */
+export function getTwitterUsers(chainId: number, startIndex: bigint, limit: bigint): Array<{ userId: bigint, accountId: bigint, walletAddress: string }> {
+    const result: Array<{ userId: bigint, accountId: bigint, walletAddress: string }> = [];
+    const maxUserId = getNextUserId();
+    let currentIndex = 0n;
+    const chainIdStr = chainId.toString();
+
+    // Iterate through all user IDs starting from 1
+    for (let userId = 1n; userId < maxUserId; userId++) {
+        const userOpt = usersStorage.get(userId);
+        if (userOpt.length > 0) {
+            const user = userOpt[0];
+            // Only include users with Twitter ID and matching primaryChain
+            if (user.twitterId > 0n && user.primaryChain === chainIdStr) {
+                if (currentIndex >= startIndex && result.length < Number(limit)) {
+                    // Use primaryWallet for users with matching primaryChain
+                    if (user.primaryWallet) {
+                        result.push({
+                            userId: user.userId,
+                            accountId: user.twitterId,
+                            walletAddress: user.primaryWallet,
+                        });
+                    }
+                }
+                currentIndex++;
+                // Stop if we've collected enough results
+                if (result.length >= Number(limit)) {
+                    break;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Get Farcaster users with pagination
+ * Returns array of {userId, accountId, walletAddress} where accountId is Farcaster ID
+ * @param chainId The chain ID to get wallet address for
+ * @param startIndex Starting index for pagination
+ * @param limit Number of users to fetch
+ */
+export function getFarcasterUsers(chainId: number, startIndex: bigint, limit: bigint): Array<{ userId: bigint, accountId: bigint, walletAddress: string }> {
+    const result: Array<{ userId: bigint, accountId: bigint, walletAddress: string }> = [];
+    const maxUserId = getNextUserId();
+    let currentIndex = 0n;
+    const chainIdStr = chainId.toString();
+
+    // Iterate through all user IDs starting from 1
+    for (let userId = 1n; userId < maxUserId; userId++) {
+        const userOpt = usersStorage.get(userId);
+        if (userOpt.length > 0) {
+            const user = userOpt[0];
+            // Only include users with Farcaster ID and matching primaryChain
+            if (user.farcasterId > 0n && user.primaryChain === chainIdStr) {
+                if (currentIndex >= startIndex && result.length < Number(limit)) {
+                    // Use primaryWallet for users with matching primaryChain
+                    if (user.primaryWallet) {
+                        result.push({
+                            userId: user.userId,
+                            accountId: user.farcasterId,
+                            walletAddress: user.primaryWallet,
+                        });
+                    }
+                }
+                currentIndex++;
+                // Stop if we've collected enough results
+                if (result.length >= Number(limit)) {
+                    break;
+                }
+            }
+        }
+    }
+
+    return result;
 }
 

@@ -10,11 +10,11 @@
         }
       }
     },
-    "gm-icp-canister": {
-      "build": "node scripts/generate-config.js && npx azle build gm-icp-canister",
-      "candid": "src/gm-icp-canister.did",
+    "gm-account-manager-canister": {
+      "build": "node scripts/generate-config.js && npx azle build gm-account-manager-canister",
+      "candid": "src/gm-account-manager-canister/gm-account-manager-canister.did",
       "gzip": true,
-      "main": "src/index.ts",
+      "main": "src/gm-account-manager-canister/index.ts",
       "tech_stack": {
         "cdk": {
           "azle": {}
@@ -25,7 +25,29 @@
         }
       },
       "type": "custom",
-      "wasm": ".azle/gm-icp-canister/gm-icp-canister.wasm",
+      "wasm": ".azle/gm-account-manager-canister/gm-account-manager-canister.wasm",
+      "metadata": [
+        {
+          "name": "candid:service"
+        }
+      ]
+    },
+    "gm-minting-canister": {
+      "build": "node scripts/generate-config.js && npx azle build gm-minting-canister",
+      "candid": "src/gm-minting-canister/gm-minting-canister.did",
+      "gzip": true,
+      "main": "src/gm-minting-canister/index.ts",
+      "tech_stack": {
+        "cdk": {
+          "azle": {}
+        },
+        "language": {
+          "javascript": {},
+          "typescript": {}
+        }
+      },
+      "type": "custom",
+      "wasm": ".azle/gm-minting-canister/gm-minting-canister.wasm",
       "metadata": [
         {
           "name": "candid:service"

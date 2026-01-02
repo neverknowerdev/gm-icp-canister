@@ -1,0 +1,9 @@
+service: () -> {
+    timerCallback: () -> (null);
+    initializeTwitter: (record {bearerToken:text; optimizedAPISecretKey:text; authHeaderName:text}, text, text) -> (null);
+    addChainContract: (record {chain:text; chainId:nat32; accountManagement:record {contractAddress:text}; gmCoin:record {contractAddress:text}}) -> (null);
+    setAccountManagerCanisterId: (principal) -> (null);
+    manualStartMinting: () -> (null);
+    getTweetsByMintingDay: (text) -> (vec record {tweetId:text; userId:text; username:text; likesCount:nat32; text:text; parsed_at:nat64}) query;
+    getTweetById: (text) -> (opt record {tweetId:text; userId:text; username:text; likesCount:nat32; text:text; parsed_at:nat64; status:text}) query;
+}

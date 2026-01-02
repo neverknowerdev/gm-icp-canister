@@ -13,6 +13,7 @@ export interface User {
     isVerified: boolean;
     verifications: string[];
     primaryWallet: string;
+    primaryChain: string;
     wallets: Wallet[];
 }
 

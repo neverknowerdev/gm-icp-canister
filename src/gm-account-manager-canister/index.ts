@@ -1,0 +1,219 @@
+import { query, update, IDL } from 'azle';
+import { processEvent } from './eventProcessor';
+import { initConfig } from './utils/config';
+import { getUser, getUserByTwitterId, getUserByFarcasterId, getTwitterUsers as getTwitterUsersFromStore, getFarcasterUsers as getFarcasterUsersFromStore } from './userManagement/userStore';
+
+interface Config {
+    contracts: {
+        [chain: string]: string[];
+    };
+    eventSignatures: {
+        [eventName: string]: string;
+    };
+}
+
+export default class {
+    @query([IDL.Text], IDL.Text)
+    greet(name: string): string {
+        return `Hello, ${name}!`;
+    }
+
+    @update([IDL.Text, IDL.Text], IDL.Null)
+    async handleEvent(chain: string, transactionId: string): Promise<null> {
+        try {
+            await processEvent(chain, transactionId);
+        } catch (error: any) {
+            console.error(`Error processing event: ${error}`);
+            if (error.message) {
+                console.error(`Error message: ${error.message}`);
+            }
+        }
+        return null;
+    }
+
+    @update([IDL.Record({
+        contracts: IDL.Record({
+            'Base Mainnet': IDL.Vec(IDL.Text),
+            'WorldChain': IDL.Vec(IDL.Text),
+            'Monad': IDL.Vec(IDL.Text),
+        }),
+        eventSignatures: IDL.Record({
+            'VerifyFarcasterRequested': IDL.Text,
+            'VerifyTwitterByAuthCodeRequested': IDL.Text,
+        }),
+    })], IDL.Null)
+    setConfig(config: Config): null {
+        initConfig(config);
+        console.log('Configuration updated successfully');
+        return null;
+    }
+
+    // User query methods for minting canister
+    @query([IDL.Nat64], IDL.Opt(IDL.Record({
+        userId: IDL.Nat64,
+        chains: IDL.Vec(IDL.Text),
+        twitterId: IDL.Nat64,
+        farcasterId: IDL.Nat64,
+        isVerified: IDL.Bool,
+        verifications: IDL.Vec(IDL.Text),
+        primaryWallet: IDL.Text,
+        primaryChain: IDL.Text,
+        wallets: IDL.Vec(IDL.Record({
+            wallet: IDL.Text,
+            chain: IDL.Text,
+        })),
+    })))
+    getUser(userId: bigint): any {
+        const user = getUser(userId);
+        if (!user) {
+            return [];
+        }
+        return [{
+            userId: user.userId,
+            chains: user.chains,
+            twitterId: user.twitterId,
+            farcasterId: user.farcasterId,
+            isVerified: user.isVerified,
+            verifications: user.verifications,
+            primaryWallet: user.primaryWallet,
+            primaryChain: user.primaryChain,
+            wallets: user.wallets,
+        }];
+    }
+
+    @query([IDL.Nat64], IDL.Opt(IDL.Record({
+        userId: IDL.Nat64,
+        chains: IDL.Vec(IDL.Text),
+        twitterId: IDL.Nat64,
+        farcasterId: IDL.Nat64,
+        isVerified: IDL.Bool,
+        verifications: IDL.Vec(IDL.Text),
+        primaryWallet: IDL.Text,
+        primaryChain: IDL.Text,
+        wallets: IDL.Vec(IDL.Record({
+            wallet: IDL.Text,
+            chain: IDL.Text,
+        })),
+    })))
+    getUserByTwitterId(twitterId: bigint): any {
+        const user = getUserByTwitterId(twitterId);
+        if (!user) {
+            return [];
+        }
+        return [{
+            userId: user.userId,
+            chains: user.chains,
+            twitterId: user.twitterId,
+            farcasterId: user.farcasterId,
+            isVerified: user.isVerified,
+            verifications: user.verifications,
+            primaryWallet: user.primaryWallet,
+            primaryChain: user.primaryChain,
+            wallets: user.wallets,
+        }];
+    }
+
+    @query([IDL.Nat64], IDL.Opt(IDL.Record({
+        userId: IDL.Nat64,
+        chains: IDL.Vec(IDL.Text),
+        twitterId: IDL.Nat64,
+        farcasterId: IDL.Nat64,
+        isVerified: IDL.Bool,
+        verifications: IDL.Vec(IDL.Text),
+        primaryWallet: IDL.Text,
+        primaryChain: IDL.Text,
+        wallets: IDL.Vec(IDL.Record({
+            wallet: IDL.Text,
+            chain: IDL.Text,
+        })),
+    })))
+    getUserByFarcasterId(farcasterId: bigint): any {
+        const user = getUserByFarcasterId(farcasterId);
+        if (!user) {
+            return [];
+        }
+        return [{
+            userId: user.userId,
+            chains: user.chains,
+            twitterId: user.twitterId,
+            farcasterId: user.farcasterId,
+            isVerified: user.isVerified,
+            verifications: user.verifications,
+            primaryWallet: user.primaryWallet,
+            primaryChain: user.primaryChain,
+            wallets: user.wallets,
+        }];
+    }
+
+    @query([IDL.Vec(IDL.Nat64)], IDL.Vec(IDL.Record({
+        userId: IDL.Nat64,
+        chains: IDL.Vec(IDL.Text),
+        twitterId: IDL.Nat64,
+        farcasterId: IDL.Nat64,
+        isVerified: IDL.Bool,
+        verifications: IDL.Vec(IDL.Text),
+        primaryWallet: IDL.Text,
+        primaryChain: IDL.Text,
+        wallets: IDL.Vec(IDL.Record({
+            wallet: IDL.Text,
+            chain: IDL.Text,
+        })),
+    })))
+    getUsers(userIds: bigint[]): any[] {
+        const users: any[] = [];
+        for (const userId of userIds) {
+            const user = getUser(userId);
+            if (user) {
+                users.push({
+                    userId: user.userId,
+                    chains: user.chains,
+                    twitterId: user.twitterId,
+                    farcasterId: user.farcasterId,
+                    isVerified: user.isVerified,
+                    verifications: user.verifications,
+                    primaryWallet: user.primaryWallet,
+                    primaryChain: user.primaryChain,
+                    wallets: user.wallets,
+                });
+            }
+        }
+        return users;
+    }
+
+    /**
+     * Get Twitter users with pagination
+     * Returns array of {userId, accountId, walletAddress} where accountId is Twitter ID
+     */
+    @query([IDL.Nat32, IDL.Nat64, IDL.Nat64], IDL.Vec(IDL.Record({
+        userId: IDL.Nat64,
+        accountId: IDL.Nat64,
+        walletAddress: IDL.Text,
+    })))
+    getTwitterUsers(chainId: number, startIndex: bigint, limit: bigint): any[] {
+        const results = getTwitterUsersFromStore(chainId, startIndex, limit);
+        return results.map(r => ({
+            userId: r.userId,
+            accountId: r.accountId,
+            walletAddress: r.walletAddress,
+        }));
+    }
+
+    /**
+     * Get Farcaster users with pagination
+     * Returns array of {userId, accountId, walletAddress} where accountId is Farcaster ID
+     */
+    @query([IDL.Nat32, IDL.Nat64, IDL.Nat64], IDL.Vec(IDL.Record({
+        userId: IDL.Nat64,
+        accountId: IDL.Nat64,
+        walletAddress: IDL.Text,
+    })))
+    getFarcasterUsers(chainId: number, startIndex: bigint, limit: bigint): any[] {
+        const results = getFarcasterUsersFromStore(chainId, startIndex, limit);
+        return results.map(r => ({
+            userId: r.userId,
+            accountId: r.accountId,
+            walletAddress: r.walletAddress,
+        }));
+    }
+}
+

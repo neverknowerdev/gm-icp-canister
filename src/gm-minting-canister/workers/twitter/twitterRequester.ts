@@ -2,7 +2,7 @@
 // Similar to GMCoin's TwitterRequester but adapted for ICP canister
 
 import { Batch, Tweet } from './types';
-import { httpGet } from '../../utils/httpClient';
+import { httpGetWithRetries } from '../../utils/httpClient';
 
 export interface TwitterSecrets {
     bearerToken: string;
@@ -19,10 +19,21 @@ export interface TwitterURLs {
 export class TwitterRequester {
     private secrets: TwitterSecrets;
     private urls: TwitterURLs;
+    private requestCounter: number = 0;
 
     constructor(secrets: TwitterSecrets, urls: TwitterURLs) {
         this.secrets = secrets;
         this.urls = urls;
+    }
+
+    /**
+     * Generate a unique idempotency key for HTTP requests
+     */
+    private generateIdempotencyKey(): string {
+        this.requestCounter++;
+        const timestamp = Date.now();
+        const random = Math.floor(Math.random() * 1000000);
+        return `${timestamp}-${this.requestCounter}-${random}`;
     }
 
     async fetchTweetsBySearchQuery(
@@ -42,9 +53,11 @@ export class TwitterRequester {
 
             const headers: Record<string, string> = {
                 [this.secrets.authHeaderName]: this.secrets.optimizedAPISecretKey,
+                'Idempotency-Key': this.generateIdempotencyKey(),
             };
 
-            const response = await httpGet(url.toString(), headers);
+            // Use httpGetWithRetries with 1 retry (2 total attempts)
+            const response = await httpGetWithRetries(url.toString(), headers, 1);
             const data = JSON.parse(response.body);
             return this.parseTwitterResponse(data, cursor);
         } catch (error) {
@@ -68,9 +81,10 @@ export class TwitterRequester {
             const url = `${this.urls.tweetLookupURL}?ids=${tweetIDs}&tweet.fields=public_metrics&expansions=author_id&user.fields=description`;
 
             try {
-                const response = await httpGet(url, {
+                const response = await httpGetWithRetries(url, {
                     Authorization: `Bearer ${this.secrets.bearerToken}`,
-                });
+                    'Idempotency-Key': this.generateIdempotencyKey(),
+                }, 1);
 
                 const data = JSON.parse(response.body);
                 if (data.data) {
@@ -105,9 +119,10 @@ export class TwitterRequester {
             const url = `${this.urls.convertToUsernamesURL}?user_ids=${batch.join(',')}`;
 
             try {
-                const response = await httpGet(url, {
+                const response = await httpGetWithRetries(url, {
                     [this.secrets.authHeaderName]: this.secrets.optimizedAPISecretKey,
-                });
+                    'Idempotency-Key': this.generateIdempotencyKey(),
+                }, 1);
 
                 const data = JSON.parse(response.body);
                 if (data.data?.users) {
