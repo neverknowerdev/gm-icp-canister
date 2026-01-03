@@ -213,6 +213,10 @@ async function prepareQueryBatches(
     return queryBatches;
 }
 
+// Threshold for re-verification using official Twitter API
+const REVERIFICATION_LIKES_THRESHOLD = 100;
+const VERIFY_TWEET_BATCH_SIZE = 300;
+
 /**
  * Process query batches with rate limiting (concurrency control)
  * Maintains a pool of PARALLEL_BATCH_COUNT concurrent processes
@@ -220,6 +224,7 @@ async function prepareQueryBatches(
  * Returns results map instead of updating state directly to avoid race conditions
  * Also collects and stores tweets in batches
  * Returns both results and error count
+ * Implements re-verification for tweets with >100 likes using official Twitter API
  */
 async function processBatchesInParallel(
     queryBatches: QueryBatch[],
@@ -233,6 +238,7 @@ async function processBatchesInParallel(
     const allResults = new Map<string, bigint>(); // Collect all results
     const allTweets: TweetInfo[] = []; // Collect all tweets for batch storage
     const erroredQueries: QueryBatch[] = []; // Collect failed query batches
+    const tweetsToVerify: Tweet[] = []; // Tweets with >100 likes that need re-verification
 
     // Create a queue of batch indices
     let nextBatchIndex = 0;
@@ -255,16 +261,42 @@ async function processBatchesInParallel(
             try {
                 const batchResult = await processSingleQueryBatch(batch, requester);
 
-                // Merge token amounts
+                // Separate tweets by likes count for re-verification
+                const regularTweets: TweetInfo[] = [];
+                const highLikesTweets: Tweet[] = [];
+                
+                for (const tweetInfo of batchResult.tweets) {
+                    // Check if tweet needs re-verification (>100 likes)
+                    if (tweetInfo.likesCount > REVERIFICATION_LIKES_THRESHOLD) {
+                        // Find corresponding Tweet object
+                        const tweet: Tweet = {
+                            tweetID: tweetInfo.tweetId,
+                            userID: tweetInfo.userId,
+                            username: tweetInfo.username,
+                            tweetContent: tweetInfo.text,
+                            likesCount: tweetInfo.likesCount,
+                            userDescriptionText: '',
+                            userIndex: 0,
+                        };
+                        highLikesTweets.push(tweet);
+                    } else {
+                        regularTweets.push(tweetInfo);
+                    }
+                }
+
+                // Merge token amounts from regular tweets
                 for (const [userId, amount] of batchResult.results.entries()) {
                     const currentAmount = allResults.get(userId) || 0n;
                     allResults.set(userId, currentAmount + amount);
                 }
 
-                // Collect tweets
-                allTweets.push(...batchResult.tweets);
+                // Collect regular tweets
+                allTweets.push(...regularTweets);
 
-                console.log(`Completed batch ${batchIndex + 1}/${queryBatches.length}`);
+                // Add high-likes tweets to verification queue
+                tweetsToVerify.push(...highLikesTweets);
+
+                console.log(`Completed batch ${batchIndex + 1}/${queryBatches.length} (${highLikesTweets.length} tweets need re-verification)`);
             } catch (error: any) {
                 console.error(`Error processing batch ${batchIndex + 1}: ${error}`);
                 // Collect failed query batch to return later
@@ -294,6 +326,51 @@ async function processBatchesInParallel(
 
     // Wait for all workers to complete
     await Promise.all(workers);
+
+    // Re-verify tweets with >100 likes using official Twitter API
+    if (tweetsToVerify.length > 0) {
+        console.log(`Re-verifying ${tweetsToVerify.length} tweets with >${REVERIFICATION_LIKES_THRESHOLD} likes using official Twitter API`);
+        
+        // Sort by likes count (descending) and take top VERIFY_TWEET_BATCH_SIZE
+        tweetsToVerify.sort((a, b) => b.likesCount - a.likesCount);
+        const tweetsToVerifyBatch = tweetsToVerify.slice(0, VERIFY_TWEET_BATCH_SIZE);
+        
+        try {
+            // Fetch tweets by IDs using official Twitter API
+            const verifiedTweets = await requester.fetchTweetsByIDs(tweetsToVerifyBatch);
+            
+            // Process verified tweets and update results
+            for (const verifiedTweet of verifiedTweets) {
+                const userIdStr = queryBatches[0]?.twitterIdToUserId.get(verifiedTweet.userID) || '';
+                
+                if (userIdStr) {
+                    // Recalculate token amount with updated likes count
+                    const tokenAmount = calculateTokenAmount(verifiedTweet);
+                    if (tokenAmount > 0n) {
+                        const currentAmount = allResults.get(userIdStr) || 0n;
+                        allResults.set(userIdStr, currentAmount + tokenAmount);
+                    }
+                    
+                    // Update tweet info with verified data
+                    const tweetInfo: TweetInfo = {
+                        tweetId: verifiedTweet.tweetID,
+                        userId: verifiedTweet.userID,
+                        username: verifiedTweet.username,
+                        likesCount: verifiedTweet.likesCount,
+                        text: verifiedTweet.tweetContent,
+                        parsed_at: Math.floor(Date.now() / 1000),
+                    };
+                    allTweets.push(tweetInfo);
+                }
+            }
+            
+            console.log(`Re-verified ${verifiedTweets.length} tweets, updated ${allResults.size} user results`);
+        } catch (error: any) {
+            console.error(`Error re-verifying tweets: ${error}`);
+            // Add tweets to errored queries for retry
+            // Note: We could add these to a separate retry queue
+        }
+    }
 
     // Store all tweets in batch
     if (allTweets.length > 0) {

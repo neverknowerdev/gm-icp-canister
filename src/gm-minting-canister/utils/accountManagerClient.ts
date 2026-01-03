@@ -265,3 +265,36 @@ export async function getTwitterUsers(chainId: number, startIndex: bigint, limit
     }
 }
 
+/**
+ * Get Farcaster users with pagination from account manager canister
+ * @param chainId The chain ID to get wallet addresses for
+ * @param startIndex Starting index for pagination
+ * @param limit Number of users to fetch
+ */
+export async function getFarcasterUsers(chainId: number, startIndex: bigint, limit: bigint): Promise<Array<{ userId: bigint; accountId: bigint; walletAddress: string }>> {
+    if (!accountManagerCanisterId) {
+        throw new Error('Account manager canister ID not set');
+    }
+
+    try {
+        const result = await call(accountManagerCanisterId, 'getFarcasterUsers', {
+            args: [chainId, startIndex, limit],
+            paramIdlTypes: [IDL.Nat32, IDL.Nat64, IDL.Nat64],
+            returnIdlType: IDL.Vec(IDL.Record({
+                userId: IDL.Nat64,
+                accountId: IDL.Nat64,
+                walletAddress: IDL.Text,
+            })),
+        });
+
+        return result.map((item: any) => ({
+            userId: item.userId,
+            accountId: item.accountId,
+            walletAddress: item.walletAddress,
+        }));
+    } catch (error: any) {
+        console.error(`Error getting Farcaster users from account manager: ${error}`);
+        return [];
+    }
+}
+

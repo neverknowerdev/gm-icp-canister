@@ -26,3 +26,6 @@ dist/
 
 # configuration files (contains sensitive contract addresses)
 canister-config.json
+
+# documentation files
+REMAINING_TASKS.md

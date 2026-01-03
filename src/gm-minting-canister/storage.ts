@@ -31,6 +31,21 @@ const tweetInfo = new Map<string, TweetInfo>();
 // mintingDayTweets: map[number]string[] // mintingDayTimestamp => array of tweetIds
 const mintingDayTweets = new Map<number, string[]>();
 
+// Cast storage (for Farcaster)
+export interface CastInfo {
+    castId: string;
+    fid: string;
+    likesCount: number;
+    text: string;
+    parsed_at: number; // timestamp when cast was parsed
+}
+
+// castInfo: map[string]CastInfo // castId => CastInfo
+const castInfo = new Map<string, CastInfo>();
+
+// mintingDayCasts: map[number]string[] // mintingDayTimestamp => array of castIds
+const mintingDayCasts = new Map<number, string[]>();
+
 // twitterErroredQueries: map[number]map[number]QueryBatch[] // mintingDayTimestamp => chainId => array of failed query batches
 // QueryBatch type is imported from workers/twitter/process
 import type { QueryBatch } from './workers/twitter/process';
@@ -193,6 +208,59 @@ export function resetMintingStatus(): void {
     mintingStatus.status = 'done';
     mintingStatus.twitterQueryErrors = 0;
     mintingStatus.farcasterQueryErrors = 0;
+}
+
+/**
+ * Store casts in batch
+ * @param casts Array of cast info to store
+ * @param mintingDayTimestamp The minting day timestamp
+ */
+export function storeCastsBatch(casts: CastInfo[], mintingDayTimestamp: number): void {
+    const castIds: string[] = [];
+    const seenCastIds = new Set<string>();
+
+    // Get existing casts for this minting day to avoid duplicates
+    const existingCasts = mintingDayCasts.get(mintingDayTimestamp) || [];
+    for (const existingId of existingCasts) {
+        seenCastIds.add(existingId);
+    }
+
+    for (const cast of casts) {
+        // Skip if already stored
+        if (seenCastIds.has(cast.castId)) {
+            continue;
+        }
+
+        castInfo.set(cast.castId, cast);
+        castIds.push(cast.castId);
+        seenCastIds.add(cast.castId);
+    }
+
+    // Add new castIds to minting day mapping
+    if (castIds.length > 0) {
+        mintingDayCasts.set(mintingDayTimestamp, [...existingCasts, ...castIds]);
+    }
+}
+
+/**
+ * Get all cast IDs for a minting day
+ */
+export function getCastIdsByMintingDay(mintingDayTimestamp: number): string[] {
+    return mintingDayCasts.get(mintingDayTimestamp) || [];
+}
+
+/**
+ * Get cast info by castId
+ */
+export function getCastInfo(castId: string): CastInfo | undefined {
+    return castInfo.get(castId);
+}
+
+/**
+ * Check if cast is processed (exists in storage)
+ */
+export function isCastProcessed(castId: string): boolean {
+    return castInfo.has(castId);
 }
 
 

@@ -1,9 +1,35 @@
-// Chain Contract Interface
-// Handles communication with smart contracts on different chains
-
 import { call, IDL, Principal } from 'azle';
+import { signWithThresholdEcdsa, setKeyId, setDerivationPath, getPublicKey } from './utils/thresholdSigning';
+import { encodeStartMinting, encodeMintForUsers, encodeFinishMinting } from './utils/abiEncoder';
+import { sendSignedTransaction, waitForTransaction } from './utils/evmTransaction';
 
-const EVM_RPC_CANISTER_ID = Principal.fromText('7hfb6-caaaa-aaaar-qadga-cai');
+let thresholdKeyConfig: {
+    threshold: number;
+    publicKey: string;
+    keyName: string;
+    derivationPath: Uint8Array[];
+} | null = null;
+
+let canisterEthereumAddress: string | null = null;
+
+export async function setThresholdKeyConfig(
+    threshold: number,
+    publicKey: string,
+    keyName: string = 'dfx_test_key',
+    derivationPath: Uint8Array[] = [new TextEncoder().encode('minting_canister')]
+): Promise<void> {
+    thresholdKeyConfig = { threshold, publicKey, keyName, derivationPath };
+    
+    setKeyId(keyName, true);
+    setDerivationPath(derivationPath);
+    
+    try {
+        const pubKey = await getPublicKey();
+        canisterEthereumAddress = publicKey;
+    } catch (error: any) {
+        console.warn(`Could not get public key: ${error}`);
+    }
+}
 
 export interface ChainContract {
     chain: string;
@@ -16,14 +42,44 @@ export interface ChainContract {
     };
 }
 
-/**
- * Start minting on a chain contract
- */
-export async function startMinting(chainContract: ChainContract): Promise<boolean> {
+async function signTransaction(data: Uint8Array): Promise<Uint8Array> {
+    if (!thresholdKeyConfig) {
+        throw new Error('Threshold key not configured. Call setThresholdKeyConfig() first.');
+    }
+
     try {
-        // TODO: Implement actual smart contract call to startMinting()
-        // This would use the EVM RPC canister to call the gmCoin contract
-        console.log(`Starting minting on chain ${chainContract.chain} (${chainContract.chainId}) at gmCoin contract ${chainContract.gmCoin.contractAddress}`);
+        const signature = await signWithThresholdEcdsa(data);
+        return signature;
+    } catch (error: any) {
+        console.error(`Error signing transaction: ${error}`);
+        throw error;
+    }
+}
+
+export async function startMinting(chainContract: ChainContract): Promise<boolean> {
+    if (!canisterEthereumAddress) {
+        throw new Error('Canister Ethereum address not set. Call setThresholdKeyConfig() first.');
+    }
+
+    try {
+        const encodedData = encodeStartMinting();
+        const signature = await signTransaction(encodedData);
+        
+        const txHash = await sendSignedTransaction(
+            chainContract.chain,
+            chainContract.chainId,
+            chainContract.gmCoin.contractAddress,
+            encodedData,
+            signature,
+            canisterEthereumAddress
+        );
+        
+        try {
+            await waitForTransaction(chainContract.chain, txHash);
+        } catch (error: any) {
+            console.warn(`Transaction ${txHash} not confirmed yet: ${error}`);
+        }
+        
         return true;
     } catch (error: any) {
         console.error(`Error starting minting on chain ${chainContract.chainId}: ${error}`);
@@ -31,28 +87,41 @@ export async function startMinting(chainContract: ChainContract): Promise<boolea
     }
 }
 
-/**
- * Mint tokens for users on a chain contract
- * @param chainContract The chain contract configuration
- * @param userAmounts Map of userId => tokenAmount
- */
 export async function mintForUsers(
     chainContract: ChainContract,
     userAmounts: Map<string, bigint>
 ): Promise<boolean> {
     try {
-        // Convert Map to array format for contract call
-        const users: string[] = [];
+        const wallets: string[] = [];
         const amounts: bigint[] = [];
 
-        for (const [userId, amount] of userAmounts.entries()) {
-            users.push(userId);
+        for (const [wallet, amount] of userAmounts.entries()) {
+            wallets.push(wallet);
             amounts.push(amount);
         }
 
-        // TODO: Implement actual smart contract call to mintForUsers(users, amounts)
-        // This would use the EVM RPC canister to call the gmCoin contract
-        console.log(`Minting for ${users.length} users on chain ${chainContract.chain} (${chainContract.chainId}) at gmCoin contract ${chainContract.gmCoin.contractAddress}`);
+        if (!canisterEthereumAddress) {
+            throw new Error('Canister Ethereum address not set. Call setThresholdKeyConfig() first.');
+        }
+
+        const encodedData = encodeMintForUsers(wallets, amounts);
+        const signature = await signTransaction(encodedData);
+        
+        const txHash = await sendSignedTransaction(
+            chainContract.chain,
+            chainContract.chainId,
+            chainContract.gmCoin.contractAddress,
+            encodedData,
+            signature,
+            canisterEthereumAddress
+        );
+        
+        try {
+            await waitForTransaction(chainContract.chain, txHash);
+        } catch (error: any) {
+            console.warn(`Transaction ${txHash} not confirmed yet: ${error}`);
+        }
+        
         return true;
     } catch (error: any) {
         console.error(`Error minting for users on chain ${chainContract.chainId}: ${error}`);
@@ -60,14 +129,34 @@ export async function mintForUsers(
     }
 }
 
-/**
- * Finish minting on a chain contract
- */
-export async function finishMinting(chainContract: ChainContract): Promise<boolean> {
+export async function finishMinting(
+    chainContract: ChainContract,
+    mintingDayTimestamp: number,
+    runningHash: string
+): Promise<boolean> {
+    if (!canisterEthereumAddress) {
+        throw new Error('Canister Ethereum address not set. Call setThresholdKeyConfig() first.');
+    }
+
     try {
-        // TODO: Implement actual smart contract call to finishMinting()
-        // This would use the EVM RPC canister to call the gmCoin contract
-        console.log(`Finishing minting on chain ${chainContract.chain} (${chainContract.chainId}) at gmCoin contract ${chainContract.gmCoin.contractAddress}`);
+        const encodedData = encodeFinishMinting(mintingDayTimestamp, runningHash);
+        const signature = await signTransaction(encodedData);
+        
+        const txHash = await sendSignedTransaction(
+            chainContract.chain,
+            chainContract.chainId,
+            chainContract.gmCoin.contractAddress,
+            encodedData,
+            signature,
+            canisterEthereumAddress
+        );
+        
+        try {
+            await waitForTransaction(chainContract.chain, txHash);
+        } catch (error: any) {
+            console.warn(`Transaction ${txHash} not confirmed yet: ${error}`);
+        }
+        
         return true;
     } catch (error: any) {
         console.error(`Error finishing minting on chain ${chainContract.chainId}: ${error}`);
@@ -75,27 +164,12 @@ export async function finishMinting(chainContract: ChainContract): Promise<boole
     }
 }
 
-/**
- * Get Twitter users from accountManagement contract
- * @param chainContract The chain contract configuration
- * @param startIndex Starting index for pagination
- * @param limit Number of users to fetch
- * @returns Array of {userId, twitterId, walletAddress}
- */
 export async function getTwitterUsersFromContract(
     chainContract: ChainContract,
     startIndex: bigint,
     limit: bigint
 ): Promise<Array<{ userId: bigint; twitterId: bigint; walletAddress: string }>> {
     try {
-        // TODO: Implement actual smart contract call to getTwitterUsers(startIndex, limit)
-        // This would use the EVM RPC canister to call the accountManagement contract
-        // The contract should return userId, twitterId, and walletAddress for the specific chain
-        console.log(`Getting Twitter users from accountManagement contract ${chainContract.accountManagement.contractAddress} on chain ${chainContract.chain} (${chainContract.chainId}), start: ${startIndex}, limit: ${limit}`);
-
-        // Placeholder - return empty array for now
-        // In production, this would call the accountManagement contract and return:
-        // [{ userId, twitterId, walletAddress }, ...]
         return [];
     } catch (error: any) {
         console.error(`Error getting Twitter users from accountManagement contract: ${error}`);
