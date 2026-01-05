@@ -4,7 +4,7 @@ import {
     getContractAddress,
     getEventSignature,
     getAllEventSignatures,
-} from '../../src/utils/config';
+} from '../../src/gm-account-manager-canister/utils/config';
 
 describe('Config Utilities', () => {
     beforeEach(() => {

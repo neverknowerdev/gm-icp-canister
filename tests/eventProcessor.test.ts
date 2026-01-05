@@ -1,17 +1,17 @@
-import { processEvent } from '../src/eventProcessor';
-import * as evmRpc from '../src/utils/evmRpc';
-import * as eventParser from '../src/utils/eventParser';
-import * as config from '../src/utils/config';
-import { TransactionReceipt, ParsedEvent } from '../src/utils/types';
-import * as verifyTwitter from '../src/events/verifyTwitter';
-import * as verifyFarcaster from '../src/events/verifyFarcaster';
+import { processEvent } from '../src/gm-account-manager-canister/eventProcessor';
+import * as evmRpc from '../src/gm-account-manager-canister/utils/evmRpc';
+import * as eventParser from '../src/gm-account-manager-canister/utils/eventParser';
+import * as config from '../src/gm-account-manager-canister/utils/config';
+import { TransactionReceipt, ParsedEvent } from '../src/gm-account-manager-canister/utils/types';
+import * as verifyTwitter from '../src/gm-account-manager-canister/events/verifyTwitter';
+import * as verifyFarcaster from '../src/gm-account-manager-canister/events/verifyFarcaster';
 
 // Mock dependencies
-jest.mock('../src/utils/evmRpc');
-jest.mock('../src/utils/eventParser');
-jest.mock('../src/utils/config');
-jest.mock('../src/events/verifyTwitter');
-jest.mock('../src/events/verifyFarcaster');
+jest.mock('../src/gm-account-manager-canister/utils/evmRpc');
+jest.mock('../src/gm-account-manager-canister/utils/eventParser');
+jest.mock('../src/gm-account-manager-canister/utils/config');
+jest.mock('../src/gm-account-manager-canister/events/verifyTwitter');
+jest.mock('../src/gm-account-manager-canister/events/verifyFarcaster');
 
 describe('Event Processor', () => {
     const mockReceipt: TransactionReceipt = {
@@ -156,7 +156,7 @@ describe('Event Processor', () => {
         (eventParser.extractEvents as jest.Mock).mockReturnValue(mockEvents);
 
         // Mock handler to throw error
-        jest.spyOn(require('../src/events/verifyTwitter'), 'verifyTwitter').mockRejectedValue(
+        jest.spyOn(require('../src/gm-account-manager-canister/events/verifyTwitter'), 'verifyTwitter').mockRejectedValue(
             new Error('Handler error')
         );
 

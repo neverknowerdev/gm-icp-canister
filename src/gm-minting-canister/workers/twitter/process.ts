@@ -54,6 +54,21 @@ export function isTwitterConfigured(): boolean {
 }
 
 /**
+ * Get Twitter config (for use in retry worker)
+ * Returns null if not configured
+ */
+export function getTwitterConfig(): {
+    secrets: TwitterSecrets;
+    urls: {
+        tweetLookupURL: string;
+        convertToUsernamesURL: string;
+        twitterSearchByQueryURL: string;
+    };
+} | null {
+    return twitterConfig;
+}
+
+/**
  * User batch callback type
  * Returns array of {userId, accountId, walletAddress} where accountId is Twitter ID
  */
@@ -225,7 +240,10 @@ const VERIFY_TWEET_BATCH_SIZE = 300;
  * Returns both results and error count
  * Implements re-verification for tweets with >100 likes using official Twitter API
  */
-async function processBatchesInParallel(
+/**
+ * Process query batches in parallel (exported for retry use)
+ */
+export async function processBatchesInParallel(
     queryBatches: QueryBatch[],
     mintingTimestamp: number
 ): Promise<{ results: Map<string, bigint>; erroredQueries: QueryBatch[] }> {
@@ -425,7 +443,11 @@ async function processSingleQueryBatch(
 /**
  * Calculate token amount based on tweet
  */
-function calculateTokenAmount(tweet: TweetInfo): bigint {
+/**
+ * Calculate token amount for a tweet based on likes count
+ * Exported for use in retry worker
+ */
+export function calculateTokenAmount(tweet: TweetInfo): bigint {
     const text = tweet.text.toLowerCase();
     const words = text.split(/\s+/);
 

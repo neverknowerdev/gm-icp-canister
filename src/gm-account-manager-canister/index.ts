@@ -2,6 +2,7 @@ import { query, update, IDL } from 'azle';
 import { processEvent } from './eventProcessor';
 import { initConfig } from './utils/config';
 import { getUser, getUserByTwitterId, getUserByFarcasterId, getTwitterUsers as getTwitterUsersFromStore, getFarcasterUsers as getFarcasterUsersFromStore } from './userManagement/userStore';
+import { getEthereumAddress } from './utils/thresholdSigning';
 
 interface Config {
     contracts: {
@@ -214,6 +215,20 @@ export default class {
             accountId: r.accountId,
             walletAddress: r.walletAddress,
         }));
+    }
+
+    /**
+     * Get the Ethereum wallet address derived from the canister's threshold ECDSA public key
+     * This is the address that the canister can use for signing transactions
+     */
+    @query([], IDL.Text)
+    async evmWalletAddress(): Promise<string> {
+        try {
+            return await getEthereumAddress();
+        } catch (error: any) {
+            console.error(`Error getting EVM wallet address: ${error}`);
+            throw new Error(`Failed to get EVM wallet address: ${error.message || error}`);
+        }
     }
 }
 

@@ -1,5 +1,5 @@
-import { callCreateUser, callAddUser, encodeUserData } from '../../src/utils/smartContract';
-import { User } from '../../src/userManagement/userTypes';
+import { callCreateUser, callAddUser, encodeUserData } from '../../src/gm-account-manager-canister/utils/smartContract';
+import { User } from '../../src/gm-account-manager-canister/userManagement/userTypes';
 
 describe('Smart Contract Utilities', () => {
     describe('encodeUserData', () => {
@@ -12,6 +12,7 @@ describe('Smart Contract Utilities', () => {
                 isVerified: true,
                 verifications: ['twitter', 'farcaster'],
                 primaryWallet: '0x123',
+                primaryChain: 'Base Mainnet',
                 wallets: [
                     { wallet: '0x123', chain: 'Base Mainnet' },
                     { wallet: '0x456', chain: 'WorldChain' },
@@ -78,6 +79,7 @@ describe('Smart Contract Utilities', () => {
                 isVerified: false,
                 verifications: [],
                 primaryWallet: '0x123',
+                primaryChain: 'Base Mainnet',
                 wallets: [{ wallet: '0x123', chain: 'Base Mainnet' }],
             };
 
@@ -95,6 +97,7 @@ describe('Smart Contract Utilities', () => {
                 isVerified: false,
                 verifications: [],
                 primaryWallet: '0x123',
+                primaryChain: 'Base Mainnet',
                 wallets: [{ wallet: '0x123', chain: 'Base Mainnet' }],
             };
 

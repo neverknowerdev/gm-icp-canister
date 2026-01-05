@@ -8,6 +8,8 @@ import { initializeTwitter } from './workers/twitter/process';
 import { getTweetIdsByMintingDay, getTweetInfo, isTweetProcessed, TweetInfo } from './storage';
 import { dateStringToMintingTimestamp } from './utils/dateUtils';
 import { getEthereumAddress } from './utils/thresholdSigning';
+import { processAllErrors } from './minting/globalRetryWorker';
+import { scheduleRetryWorker, resetRetryCount } from './minting/retryScheduler';
 
 export default class {
     constructor() {
@@ -35,6 +37,33 @@ export default class {
             console.error(`Error in timer callback: ${error}`);
             // Still reschedule even if there's an error
             rescheduleMinting();
+        }
+        return null;
+    }
+
+    /**
+     * Retry worker callback - called by ICP timer system for retrying errors
+     * This processes all error types using the global retry worker
+     */
+    @update([], IDL.Null)
+    async retryWorkerCallback(): Promise<null> {
+        console.log('Retry worker callback fired - processing errors...');
+        try {
+            const success = await processAllErrors();
+            
+            if (!success) {
+                // Errors still exist, schedule next retry
+                console.log('Errors still exist, scheduling next retry...');
+                scheduleRetryWorker();
+            } else {
+                // All errors resolved
+                console.log('All errors resolved, retry worker complete');
+                resetRetryCount();
+            }
+        } catch (error: any) {
+            console.error(`Error in retry worker callback: ${error}`);
+            // Try to schedule next retry even on error
+            scheduleRetryWorker();
         }
         return null;
     }

@@ -8,7 +8,8 @@ import { processFarcasterMinting, FarcasterMintingResult, GetFarcasterUsersCallb
 import { getTwitterUsers, getFarcasterUsers } from './utils/accountManagerClient';
 import { getCurrentMintingDayTimestamp } from './utils/dateUtils';
 import { shouldStartNewEpoch, startNewEpoch, addEpochPoints, getCoinsMultiplicator } from './minting/complexityManager';
-import { addRetryTask } from './minting/retryManager';
+import { addError, hasErrors, clearAllErrors } from './storage/errorStorage';
+import { scheduleRetryWorker, resetRetryCount } from './minting/retryScheduler';
 
 // Chain contracts configuration
 const chainContracts: ChainContract[] = [];
@@ -77,14 +78,13 @@ export async function startMinting(): Promise<void> {
 
             console.log(`Found ${twitterResults.length} Twitter users to mint for chain ${chainContract.chain} (${chainContract.chainId})`);
 
-            // Save errored queries and add to retry queue
+            // Save errored queries to error storage
             for (const erroredQuery of erroredQueries) {
                 addTwitterErroredQuery(mintingTimestamp, chainContract.chainId, erroredQuery);
-                // Add to retry queue with exponential backoff
-                const taskId = `twitter-${chainContract.chainId}-${mintingTimestamp}-${Date.now()}`;
-                addRetryTask(taskId, 'twitter-query', {
+                // Add to error storage for global retry worker
+                addError('twitter-query', {
+                    mintingDayTimestamp: mintingTimestamp,
                     chainId: chainContract.chainId,
-                    mintingTimestamp,
                     queryBatch: erroredQuery,
                 });
             }
@@ -111,12 +111,11 @@ export async function startMinting(): Promise<void> {
 
             console.log(`Found ${farcasterResults.length} Farcaster users to mint for chain ${chainContract.chain} (${chainContract.chainId})`);
 
-            // Add Farcaster errored queries to retry queue
+            // Add Farcaster errored queries to error storage
             for (const erroredQuery of farcasterErroredQueries) {
-                const taskId = `farcaster-${chainContract.chainId}-${mintingTimestamp}-${Date.now()}`;
-                addRetryTask(taskId, 'farcaster-query', {
+                addError('farcaster-query', {
+                    mintingDayTimestamp: mintingTimestamp,
                     chainId: chainContract.chainId,
-                    mintingTimestamp,
                     queryBatch: erroredQuery,
                 });
             }
@@ -150,12 +149,30 @@ export async function startMinting(): Promise<void> {
             }
         }
 
+        // Check for errors and schedule retry worker if needed
+        if (hasErrors()) {
+            console.log('Errors occurred during minting, scheduling retry worker...');
+            resetRetryCount(); // Reset retry count for new cycle
+            scheduleRetryWorker();
+        } else {
+            // No errors, clear any previous errors
+            clearAllErrors();
+        }
+
         // Reset minting status
         resetMintingStatus();
         console.log('Minting process completed successfully');
     } catch (error: any) {
         console.error(`Error in minting process: ${error}`);
         setMintingStatus('error');
+        
+        // Check for errors and schedule retry worker even on exception
+        if (hasErrors()) {
+            console.log('Errors occurred, scheduling retry worker...');
+            resetRetryCount();
+            scheduleRetryWorker();
+        }
+        
         throw error;
     } finally {
         // Release lock
@@ -203,10 +220,11 @@ async function mintResultsToContracts(
             try {
                 await mintForUsers(chainContract, userAmounts);
             } catch (error: any) {
-                // Add failed minting call to retry queue
+                // Add failed minting call to error storage
                 console.error(`Error minting batch to chain ${chainId}: ${error}`);
-                const taskId = `minting-${source}-${chainId}-${Date.now()}`;
-                addRetryTask(taskId, 'minting-call', {
+                const mintingTimestamp = getCurrentMintingDayTimestamp();
+                addError('minting-tx', {
+                    mintingDayTimestamp: mintingTimestamp,
                     chainId,
                     source,
                     userAmounts: Array.from(userAmounts.entries()),

@@ -193,7 +193,10 @@ async function prepareFarcasterQueryBatches(
 /**
  * Process Farcaster query batches with rate limiting
  */
-async function processFarcasterBatchesInParallel(
+/**
+ * Process Farcaster query batches in parallel (exported for retry use)
+ */
+export async function processFarcasterBatchesInParallel(
     queryBatches: FarcasterQueryBatch[],
     mintingTimestamp: number
 ): Promise<{ results: Map<string, bigint>; erroredQueries: FarcasterQueryBatch[] }> {

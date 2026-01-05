@@ -1,13 +1,13 @@
-import { verifyTwitter } from '../../src/events/verifyTwitter';
-import { ParsedEvent } from '../../src/utils/types';
-import * as userStore from '../../src/userManagement/userStore';
-import * as smartContract from '../../src/utils/smartContract';
-import * as config from '../../src/utils/config';
+import { verifyTwitter } from '../../src/gm-account-manager-canister/events/verifyTwitter';
+import { ParsedEvent } from '../../src/gm-account-manager-canister/utils/types';
+import * as userStore from '../../src/gm-account-manager-canister/userManagement/userStore';
+import * as smartContract from '../../src/gm-account-manager-canister/utils/smartContract';
+import * as config from '../../src/gm-account-manager-canister/utils/config';
 
 // Mock dependencies
-jest.mock('../../src/userManagement/userStore');
-jest.mock('../../src/utils/smartContract');
-jest.mock('../../src/utils/config');
+jest.mock('../../src/gm-account-manager-canister/userManagement/userStore');
+jest.mock('../../src/gm-account-manager-canister/utils/smartContract');
+jest.mock('../../src/gm-account-manager-canister/utils/config');
 
 describe('verifyTwitter Handler', () => {
     const mockEvent: ParsedEvent = {

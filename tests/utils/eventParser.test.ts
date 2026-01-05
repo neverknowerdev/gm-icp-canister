@@ -1,9 +1,9 @@
-import { parseEvent, extractEvents } from '../../src/utils/eventParser';
-import { LogEntry } from '../../src/utils/types';
-import { getAllEventSignatures } from '../../src/utils/config';
+import { parseEvent, extractEvents } from '../../src/gm-account-manager-canister/utils/eventParser';
+import { LogEntry } from '../../src/gm-account-manager-canister/utils/types';
+import { getAllEventSignatures } from '../../src/gm-account-manager-canister/utils/config';
 
 // Mock config
-jest.mock('../../src/utils/config', () => ({
+jest.mock('../../src/gm-account-manager-canister/utils/config', () => ({
     getAllEventSignatures: jest.fn(() => ({
         'VerifyFarcasterRequested': '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
         'VerifyTwitterByAuthCodeRequested': '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',

@@ -1,4 +1,4 @@
-import { fetchTransactionReceipt } from '../../src/utils/evmRpc';
+import { fetchTransactionReceipt } from '../../src/gm-account-manager-canister/utils/evmRpc';
 import * as azle from 'azle';
 
 // Mock azle

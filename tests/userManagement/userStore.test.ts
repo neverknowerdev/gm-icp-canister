@@ -9,7 +9,7 @@ import {
     updateUserFarcasterId,
     isTwitterIdUnique,
     isFarcasterIdUnique,
-} from '../../src/userManagement/userStore';
+} from '../../src/gm-account-manager-canister/userManagement/userStore';
 import { clearMockStorage } from '../mocks/azle.mock';
 
 // Reset storage before each test

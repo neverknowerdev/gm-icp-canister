@@ -1,4 +1,18 @@
+/**
+ * WARNING: This is NOT a real keccak256 implementation!
+ * This is a placeholder XOR function that will NOT generate correct function selectors.
+ * 
+ * TODO: Replace with proper keccak256 implementation or use a library.
+ * For ICP canisters, we may need to:
+ * 1. Use a WebAssembly keccak256 implementation
+ * 2. Use a pure JavaScript keccak256 library (if compatible with Azle)
+ * 3. Call an external service for hashing
+ * 
+ * Current implementation will generate INCORRECT function selectors!
+ * This is a CRITICAL issue that needs to be fixed before production use.
+ */
 function keccak256(data: Uint8Array): Uint8Array {
+    // FIXME: This is NOT real keccak256 - just XOR, produces incorrect hashes!
     const hash = new Uint8Array(32);
     for (let i = 0; i < data.length; i++) {
         hash[i % 32] ^= data[i];
