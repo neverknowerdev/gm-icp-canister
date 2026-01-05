@@ -19,10 +19,10 @@ export async function setThresholdKeyConfig(
     derivationPath: Uint8Array[] = [new TextEncoder().encode('minting_canister')]
 ): Promise<void> {
     thresholdKeyConfig = { threshold, publicKey, keyName, derivationPath };
-    
+
     setKeyId(keyName, true);
     setDerivationPath(derivationPath);
-    
+
     try {
         const pubKey = await getPublicKey();
         canisterEthereumAddress = publicKey;
@@ -64,7 +64,7 @@ export async function startMinting(chainContract: ChainContract): Promise<boolea
     try {
         const encodedData = encodeStartMinting();
         const signature = await signTransaction(encodedData);
-        
+
         const txHash = await sendSignedTransaction(
             chainContract.chain,
             chainContract.chainId,
@@ -73,13 +73,13 @@ export async function startMinting(chainContract: ChainContract): Promise<boolea
             signature,
             canisterEthereumAddress
         );
-        
+
         try {
             await waitForTransaction(chainContract.chain, txHash);
         } catch (error: any) {
             console.warn(`Transaction ${txHash} not confirmed yet: ${error}`);
         }
-        
+
         return true;
     } catch (error: any) {
         console.error(`Error starting minting on chain ${chainContract.chainId}: ${error}`);
@@ -106,7 +106,7 @@ export async function mintForUsers(
 
         const encodedData = encodeMintForUsers(wallets, amounts);
         const signature = await signTransaction(encodedData);
-        
+
         const txHash = await sendSignedTransaction(
             chainContract.chain,
             chainContract.chainId,
@@ -115,13 +115,13 @@ export async function mintForUsers(
             signature,
             canisterEthereumAddress
         );
-        
+
         try {
             await waitForTransaction(chainContract.chain, txHash);
         } catch (error: any) {
             console.warn(`Transaction ${txHash} not confirmed yet: ${error}`);
         }
-        
+
         return true;
     } catch (error: any) {
         console.error(`Error minting for users on chain ${chainContract.chainId}: ${error}`);
@@ -141,7 +141,7 @@ export async function finishMinting(
     try {
         const encodedData = encodeFinishMinting(mintingDayTimestamp, runningHash);
         const signature = await signTransaction(encodedData);
-        
+
         const txHash = await sendSignedTransaction(
             chainContract.chain,
             chainContract.chainId,
@@ -150,30 +150,16 @@ export async function finishMinting(
             signature,
             canisterEthereumAddress
         );
-        
+
         try {
             await waitForTransaction(chainContract.chain, txHash);
         } catch (error: any) {
             console.warn(`Transaction ${txHash} not confirmed yet: ${error}`);
         }
-        
+
         return true;
     } catch (error: any) {
         console.error(`Error finishing minting on chain ${chainContract.chainId}: ${error}`);
         return false;
     }
 }
-
-export async function getTwitterUsersFromContract(
-    chainContract: ChainContract,
-    startIndex: bigint,
-    limit: bigint
-): Promise<Array<{ userId: bigint; twitterId: bigint; walletAddress: string }>> {
-    try {
-        return [];
-    } catch (error: any) {
-        console.error(`Error getting Twitter users from accountManagement contract: ${error}`);
-        return [];
-    }
-}
-

@@ -7,6 +7,7 @@ import { TwitterSecrets } from './workers/twitter/twitterRequester';
 import { initializeTwitter } from './workers/twitter/process';
 import { getTweetIdsByMintingDay, getTweetInfo, isTweetProcessed, TweetInfo } from './storage';
 import { dateStringToMintingTimestamp } from './utils/dateUtils';
+import { getEthereumAddress } from './utils/thresholdSigning';
 
 export default class {
     constructor() {
@@ -133,6 +134,7 @@ export default class {
      */
     @query([IDL.Text], IDL.Vec(IDL.Record({
         tweetId: IDL.Text,
+        twitterUserId: IDL.Text,
         userId: IDL.Text,
         username: IDL.Text,
         likesCount: IDL.Nat32,
@@ -165,6 +167,7 @@ export default class {
      */
     @query([IDL.Text], IDL.Opt(IDL.Record({
         tweetId: IDL.Text,
+        twitterUserId: IDL.Text,
         userId: IDL.Text,
         username: IDL.Text,
         likesCount: IDL.Nat32,
@@ -184,6 +187,7 @@ export default class {
 
         return [{
             tweetId: tweetInfo.tweetId,
+            twitterUserId: tweetInfo.twitterUserId,
             userId: tweetInfo.userId,
             username: tweetInfo.username,
             likesCount: tweetInfo.likesCount,
@@ -191,5 +195,21 @@ export default class {
             parsed_at: tweetInfo.parsed_at,
             status: 'processed',
         }];
+    }
+
+    /**
+     * Get the canister's EVM wallet address
+     * This is derived from the threshold key's public key
+     * The address is the last 20 bytes of keccak256 hash of the public key
+     * @returns Ethereum address as hex string with 0x prefix
+     */
+    @query([], IDL.Text)
+    async canisterEvmWalletAddress(): Promise<string> {
+        try {
+            return await getEthereumAddress();
+        } catch (error: any) {
+            console.error(`Error getting canister EVM wallet address: ${error}`);
+            throw new Error(`Failed to get EVM wallet address: ${error.message || error}`);
+        }
     }
 }

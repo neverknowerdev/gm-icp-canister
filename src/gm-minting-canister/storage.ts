@@ -6,19 +6,22 @@ export type MintingStatus = 'done' | 'in-progress' | 'error';
 export interface MintingStatusInfo {
     status: MintingStatus;
     twitterQueryErrors: number;
+    twitterRefereficationErrors: number;
     farcasterQueryErrors: number;
 }
 
 const mintingStatus: MintingStatusInfo = {
     status: 'done',
     twitterQueryErrors: 0,
+    twitterRefereficationErrors: 0,
     farcasterQueryErrors: 0,
 };
 
 // Tweet storage
 export interface TweetInfo {
     tweetId: string;
-    userId: string;
+    twitterUserId: string;
+    userId: string; // Internal user ID from account manager canister
     username: string;
     likesCount: number;
     text: string;

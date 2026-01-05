@@ -2,7 +2,6 @@
 // Handles all Twitter-related minting operations
 
 import { TwitterRequester, TwitterSecrets } from './twitterRequester';
-import { Tweet } from './types';
 import { storeTweetsBatch, TweetInfo } from '../../storage';
 
 // Configuration for Twitter processing
@@ -18,7 +17,7 @@ let twitterConfig: {
 const MAX_TWITTER_SEARCH_QUERY_LENGTH = 512;
 const KEYWORD = 'gm';
 const PARALLEL_BATCH_COUNT = 5; // Number of batches to process in parallel
-const USER_FETCH_BATCH_SIZE = 1000n; // Fetch users in batches of 100
+const USER_FETCH_BATCH_SIZE = 1000n; // Fetch users in batches of 1000
 
 /**
  * Query batch structure
@@ -238,7 +237,7 @@ async function processBatchesInParallel(
     const allResults = new Map<string, bigint>(); // Collect all results
     const allTweets: TweetInfo[] = []; // Collect all tweets for batch storage
     const erroredQueries: QueryBatch[] = []; // Collect failed query batches
-    const tweetsToVerify: Tweet[] = []; // Tweets with >100 likes that need re-verification
+    const tweetsToVerify: TweetInfo[] = []; // Tweets with >100 likes that need re-verification
 
     // Create a queue of batch indices
     let nextBatchIndex = 0;
@@ -263,22 +262,12 @@ async function processBatchesInParallel(
 
                 // Separate tweets by likes count for re-verification
                 const regularTweets: TweetInfo[] = [];
-                const highLikesTweets: Tweet[] = [];
-                
+                const highLikesTweets: TweetInfo[] = [];
+
                 for (const tweetInfo of batchResult.tweets) {
                     // Check if tweet needs re-verification (>100 likes)
                     if (tweetInfo.likesCount > REVERIFICATION_LIKES_THRESHOLD) {
-                        // Find corresponding Tweet object
-                        const tweet: Tweet = {
-                            tweetID: tweetInfo.tweetId,
-                            userID: tweetInfo.userId,
-                            username: tweetInfo.username,
-                            tweetContent: tweetInfo.text,
-                            likesCount: tweetInfo.likesCount,
-                            userDescriptionText: '',
-                            userIndex: 0,
-                        };
-                        highLikesTweets.push(tweet);
+                        highLikesTweets.push(tweetInfo);
                     } else {
                         regularTweets.push(tweetInfo);
                     }
@@ -330,40 +319,28 @@ async function processBatchesInParallel(
     // Re-verify tweets with >100 likes using official Twitter API
     if (tweetsToVerify.length > 0) {
         console.log(`Re-verifying ${tweetsToVerify.length} tweets with >${REVERIFICATION_LIKES_THRESHOLD} likes using official Twitter API`);
-        
+
         // Sort by likes count (descending) and take top VERIFY_TWEET_BATCH_SIZE
         tweetsToVerify.sort((a, b) => b.likesCount - a.likesCount);
         const tweetsToVerifyBatch = tweetsToVerify.slice(0, VERIFY_TWEET_BATCH_SIZE);
-        
+
         try {
             // Fetch tweets by IDs using official Twitter API
-            const verifiedTweets = await requester.fetchTweetsByIDs(tweetsToVerifyBatch);
-            
+            const verifiedTweets = await requester.reVerifyTweets(tweetsToVerifyBatch);
+
             // Process verified tweets and update results
             for (const verifiedTweet of verifiedTweets) {
-                const userIdStr = queryBatches[0]?.twitterIdToUserId.get(verifiedTweet.userID) || '';
-                
-                if (userIdStr) {
-                    // Recalculate token amount with updated likes count
-                    const tokenAmount = calculateTokenAmount(verifiedTweet);
-                    if (tokenAmount > 0n) {
-                        const currentAmount = allResults.get(userIdStr) || 0n;
-                        allResults.set(userIdStr, currentAmount + tokenAmount);
-                    }
-                    
-                    // Update tweet info with verified data
-                    const tweetInfo: TweetInfo = {
-                        tweetId: verifiedTweet.tweetID,
-                        userId: verifiedTweet.userID,
-                        username: verifiedTweet.username,
-                        likesCount: verifiedTweet.likesCount,
-                        text: verifiedTweet.tweetContent,
-                        parsed_at: Math.floor(Date.now() / 1000),
-                    };
-                    allTweets.push(tweetInfo);
+                // Recalculate token amount with updated likes count
+                const tokenAmount = calculateTokenAmount(verifiedTweet);
+                if (tokenAmount > 0n) {
+                    const currentAmount = allResults.get(verifiedTweet.userId) || 0n;
+                    allResults.set(verifiedTweet.userId, currentAmount + tokenAmount);
                 }
+
+                // Update tweet info with verified data (use verified tweet directly)
+                allTweets.push(verifiedTweet);
             }
-            
+
             console.log(`Re-verified ${verifiedTweets.length} tweets, updated ${allResults.size} user results`);
         } catch (error: any) {
             console.error(`Error re-verifying tweets: ${error}`);
@@ -406,29 +383,24 @@ async function processSingleQueryBatch(
             const { tweets: fetchedTweets, nextCursor } = await requester.fetchTweetsBySearchQuery(batch.queryString, cursor);
 
             // Process tweets and match to users
-            for (const tweet of fetchedTweets) {
-                // Get userId from batch's twitterIdToUserId mapping using tweet.userID (Twitter ID)
-                const userIdStr = batch.twitterIdToUserId.get(tweet.userID) || '';
+            for (let tweet of fetchedTweets) {
+                // Get userId from batch's twitterIdToUserId mapping using tweet.twitterUserId (Twitter ID)
+                const userIdStr = batch.twitterIdToUserId.get(tweet.twitterUserId);
+                if (!userIdStr) {
+                    console.warn(`No userId found for tweet ${tweet.tweetId} with twitterUserId ${tweet.twitterUserId}`);
+                    continue;
+                }
 
                 // Store tweet info (store all parsed tweets, even if userId not found)
-                const tweetInfo: TweetInfo = {
-                    tweetId: tweet.tweetID,
-                    userId: tweet.userID,
-                    username: tweet.username,
-                    likesCount: tweet.likesCount,
-                    text: tweet.tweetContent,
-                    parsed_at: parsedAt,
-                };
-                tweets.push(tweetInfo);
+                // Update parsed_at timestamp and set userId
+                tweet.parsed_at = parsedAt;
+                tweet.userId = userIdStr;
+                tweets.push(tweet);
 
-                if (userIdStr) {
-                    const tokenAmount = calculateTokenAmount(tweet);
-                    if (tokenAmount > 0n) {
-                        const currentAmount = results.get(userIdStr) || 0n;
-                        results.set(userIdStr, currentAmount + tokenAmount);
-                    }
-                } else {
-                    console.warn(`No userId found for tweet ${tweet.tweetID} with userID ${tweet.userID}`);
+                const tokenAmount = calculateTokenAmount(tweet);
+                if (tokenAmount > 0n) {
+                    const currentAmount = results.get(userIdStr) || 0n;
+                    results.set(userIdStr, currentAmount + tokenAmount);
                 }
             }
 
@@ -453,8 +425,8 @@ async function processSingleQueryBatch(
 /**
  * Calculate token amount based on tweet
  */
-function calculateTokenAmount(tweet: Tweet): bigint {
-    const text = tweet.tweetContent.toLowerCase();
+function calculateTokenAmount(tweet: TweetInfo): bigint {
+    const text = tweet.text.toLowerCase();
     const words = text.split(/\s+/);
 
     let amount = 0n;

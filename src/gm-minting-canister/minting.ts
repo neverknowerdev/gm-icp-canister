@@ -69,7 +69,7 @@ export async function startMinting(): Promise<void> {
             // Process Twitter for this chain
             const getUserCallback = createGetUsersCallback(chainContract);
             console.log(`Processing Twitter for chain ${chainContract.chain} (${chainContract.chainId})`);
-            
+
             const { mintingResults: twitterResults, erroredQueries } = await processTwitterMinting(
                 getUserCallback,
                 mintingTimestamp
@@ -103,7 +103,7 @@ export async function startMinting(): Promise<void> {
             // Process Farcaster for this chain
             const getFarcasterUserCallback = createGetFarcasterUsersCallback(chainContract);
             console.log(`Processing Farcaster for chain ${chainContract.chain} (${chainContract.chainId})`);
-            
+
             const { mintingResults: farcasterResults, erroredQueries: farcasterErroredQueries } = await processFarcasterMinting(
                 getFarcasterUserCallback,
                 mintingTimestamp
@@ -199,7 +199,7 @@ async function mintResultsToContracts(
             for (const result of batch) {
                 userAmounts.set(result.userWallet, result.tokenAmount);
             }
-            
+
             try {
                 await mintForUsers(chainContract, userAmounts);
             } catch (error: any) {

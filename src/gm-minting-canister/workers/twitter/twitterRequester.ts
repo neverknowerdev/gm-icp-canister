@@ -1,7 +1,7 @@
 // Twitter API requester for fetching tweets
 // Similar to GMCoin's TwitterRequester but adapted for ICP canister
 
-import { Batch, Tweet } from './types';
+import { TweetInfo } from '../../storage';
 import { httpGetWithRetries } from '../../utils/httpClient';
 
 export interface TwitterSecrets {
@@ -11,7 +11,6 @@ export interface TwitterSecrets {
 }
 
 export interface TwitterURLs {
-    tweetLookupURL: string;
     convertToUsernamesURL: string;
     twitterSearchByQueryURL: string;
 }
@@ -36,10 +35,17 @@ export class TwitterRequester {
         return `${timestamp}-${this.requestCounter}-${random}`;
     }
 
+    /**
+     * Fetch tweets by search query
+     * Here we use optimized server to perform API calls, to minize queries produced by ICP canisters by idempotency key
+     * @param query - The search query
+     * @param cursor - The cursor to use for pagination
+     * @returns The tweets and the next cursor
+     */
     async fetchTweetsBySearchQuery(
         query: string,
         cursor: string
-    ): Promise<{ tweets: Tweet[]; nextCursor: string }> {
+    ): Promise<{ tweets: TweetInfo[]; nextCursor: string }> {
         try {
             // Make HTTP request to Twitter API using ICP HTTP outcalls
             const url = new URL(this.urls.twitterSearchByQueryURL);
@@ -66,19 +72,24 @@ export class TwitterRequester {
         }
     }
 
-    async fetchTweetsByIDs(tweets: Tweet[]): Promise<Tweet[]> {
-        const batchSize = 100;
-        const batches: Tweet[][] = [];
+    /**
+     * Re-verify tweets by IDs using official Twitter API
+     * @param tweets - The tweets to re-verify
+     * @returns The re-verified tweets
+     */
+    async reVerifyTweets(tweets: TweetInfo[]): Promise<TweetInfo[]> {
+        const batchSize = 100; // max limit by X API
+        const batches: TweetInfo[][] = [];
 
         for (let i = 0; i < tweets.length; i += batchSize) {
             batches.push(tweets.slice(i, i + batchSize));
         }
 
-        const results: Tweet[] = [];
+        const results: TweetInfo[] = [];
 
         for (const batch of batches) {
-            const tweetIDs = batch.map((t) => t.tweetID).join(',');
-            const url = `${this.urls.tweetLookupURL}?ids=${tweetIDs}&tweet.fields=public_metrics&expansions=author_id&user.fields=description`;
+            const tweetIDs = batch.map((t) => t.tweetId).join(',');
+            const url = `https://api.x.com/2/tweets?ids=${tweetIDs}&tweet.fields=public_metrics&expansions=author_id&user.fields=description`;
 
             try {
                 const response = await httpGetWithRetries(url, {
@@ -89,10 +100,10 @@ export class TwitterRequester {
                 const data = JSON.parse(response.body);
                 if (data.data) {
                     for (const tweetData of data.data) {
-                        const tweet = batch.find((t) => t.tweetID === tweetData.id);
+                        let tweet = batch.find((t) => t.tweetId === tweetData.id);
                         if (tweet) {
                             tweet.likesCount = tweetData.public_metrics?.like_count || 0;
-                            tweet.tweetContent = tweetData.text || '';
+                            tweet.text = tweetData.text || '';
                             results.push(tweet);
                         }
                     }
@@ -140,57 +151,10 @@ export class TwitterRequester {
         return userIDs.map((id) => userIDtoUsername.get(id) || '');
     }
 
-    async fetchTweetsInBatches(
-        batchesToProcess: Batch[],
-        queryList: string[],
-        userIndexByUsername: Map<string, number>
-    ): Promise<{
-        tweets: Tweet[];
-        batches: Batch[];
-        errorBatches: Batch[];
-    }> {
-        const allTweets: Tweet[] = [];
-        const errorBatches: Batch[] = [];
-        const finalSuccessBatches: Batch[] = [];
-
-        for (let i = 0; i < batchesToProcess.length; i++) {
-            const batch = batchesToProcess[i];
-            try {
-                const { tweets, nextCursor } = await this.fetchTweetsBySearchQuery(
-                    queryList[i],
-                    batch.nextCursor
-                );
-
-                for (const tweet of tweets) {
-                    const userIndex = userIndexByUsername.get(tweet.username);
-                    if (userIndex === undefined) {
-                        console.error('Username not found:', tweet.username);
-                        throw new Error(`Username not found: ${tweet.username}`);
-                    }
-                    tweet.userIndex = userIndex;
-                }
-
-                batch.nextCursor = tweets.length > 0 && nextCursor !== '' ? nextCursor : '';
-                batch.errorCount = 0;
-                finalSuccessBatches.push(batch);
-                allTweets.push(...tweets);
-            } catch (error) {
-                batch.errorCount++;
-                errorBatches.push(batch);
-                console.error('Error fetching and processing tweets:', error);
-            }
-        }
-
-        return {
-            tweets: allTweets,
-            batches: finalSuccessBatches,
-            errorBatches,
-        };
-    }
-
-    private parseTwitterResponse(data: any, cursor: string): { tweets: Tweet[]; nextCursor: string } {
-        const tweets: Tweet[] = [];
+    private parseTwitterResponse(data: any, cursor: string): { tweets: TweetInfo[]; nextCursor: string } {
+        const tweets: TweetInfo[] = [];
         let nextCursor = '';
+        const parsedAt = Math.floor(Date.now() / 1000);
 
         try {
             const instructions = data.data?.search_by_raw_query?.search_timeline?.timeline?.instructions || [];
@@ -215,17 +179,17 @@ export class TwitterRequester {
                     if (tweetData) {
                         const user = tweetData.core?.user_results?.result ?? tweetData.tweet?.core?.user_results?.result;
                         const legacy = tweetData.legacy ?? tweetData.tweet?.legacy;
-                        const tweetID = tweetData.rest_id ?? tweetData.tweet?.rest_id;
+                        const tweetId = tweetData.rest_id ?? tweetData.tweet?.rest_id;
 
-                        if (user && legacy && tweetID) {
+                        if (user && legacy && tweetId) {
                             tweets.push({
-                                tweetID: tweetID,
-                                userID: user.rest_id,
+                                tweetId: tweetId,
+                                twitterUserId: user.rest_id,
+                                userId: '', // Will be filled in processSingleQueryBatch
                                 username: user.core?.screen_name || '',
-                                tweetContent: legacy.full_text || '',
+                                text: legacy.full_text || '',
                                 likesCount: legacy.favorite_count || 0,
-                                userDescriptionText: user.profile_bio?.description || '',
-                                userIndex: 0,
+                                parsed_at: parsedAt,
                             });
                         }
                     }
