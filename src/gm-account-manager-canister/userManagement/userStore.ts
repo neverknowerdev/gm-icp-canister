@@ -110,6 +110,48 @@ export function createUser(
 }
 
 /**
+ * Create a user with a specific userId (used when syncing from contract events)
+ * This is used when we receive a UserCreated event and need to create the user with the userId from the contract
+ */
+export function createUserWithId(
+    userId: bigint,
+    wallet: string,
+    chain: string,
+    twitterId: bigint = 0n,
+    farcasterId: bigint = 0n
+): User {
+    const user: User = {
+        userId,
+        chains: [chain],
+        twitterId,
+        farcasterId,
+        isVerified: false,
+        verifications: [],
+        primaryWallet: wallet.toLowerCase(),
+        primaryChain: chain,
+        wallets: [{
+            wallet: wallet.toLowerCase(),
+            chain,
+        }],
+    };
+
+    usersStorage.insert(userId, user);
+
+    if (twitterId > 0n) {
+        twitterToUserIdStorage.insert(twitterId, userId);
+    }
+
+    if (farcasterId > 0n) {
+        farcasterToUserIdStorage.insert(farcasterId, userId);
+    }
+
+    const walletKey = `${wallet.toLowerCase()}:${chain}`;
+    walletToUserIdStorage.insert(walletKey, userId);
+
+    return user;
+}
+
+/**
  * Add wallet to existing user
  */
 export function addWalletToUser(userId: bigint, wallet: string, chain: string): boolean {
@@ -299,3 +341,67 @@ export function getFarcasterUsers(chainId: number, startIndex: bigint, limit: bi
     return result;
 }
 
+/**
+ * Remove a user (called when UserRemoved event is received)
+ */
+export function removeUser(userId: bigint): boolean {
+    const userOpt = usersStorage.get(userId);
+    if (userOpt.length === 0) {
+        return false;
+    }
+
+    const user = userOpt[0];
+
+    // Remove Twitter ID mapping if exists
+    if (user.twitterId > 0n) {
+        twitterToUserIdStorage.remove(user.twitterId);
+    }
+
+    // Remove Farcaster ID mapping if exists
+    if (user.farcasterId > 0n) {
+        farcasterToUserIdStorage.remove(user.farcasterId);
+    }
+
+    // Remove all wallet mappings
+    for (const wallet of user.wallets) {
+        const walletKey = `${wallet.wallet}:${wallet.chain}`;
+        walletToUserIdStorage.remove(walletKey);
+    }
+
+    // Remove user from storage
+    usersStorage.remove(userId);
+
+    return true;
+}
+
+/**
+ * Update user's primary wallet (called when PrimaryWalletUpdated event is received)
+ */
+export function updateUserPrimaryWallet(userId: bigint, wallet: string): boolean {
+    const userOpt = usersStorage.get(userId);
+    if (userOpt.length === 0) {
+        return false;
+    }
+
+    const user = userOpt[0];
+    user.primaryWallet = wallet.toLowerCase();
+    usersStorage.insert(userId, user);
+
+    return true;
+}
+
+/**
+ * Mark user as verified (called when HumanVerificationUpdated event is received)
+ */
+export function markUserAsVerified(userId: bigint): boolean {
+    const userOpt = usersStorage.get(userId);
+    if (userOpt.length === 0) {
+        return false;
+    }
+
+    const user = userOpt[0];
+    user.isVerified = true;
+    usersStorage.insert(userId, user);
+
+    return true;
+}

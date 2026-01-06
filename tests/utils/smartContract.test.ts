@@ -1,7 +1,25 @@
 import { callCreateUser, callAddUser, encodeUserData } from '../../src/gm-account-manager-canister/utils/smartContract';
 import { User } from '../../src/gm-account-manager-canister/userManagement/userTypes';
 
+// Mock dependencies
+jest.mock('../../src/gm-account-manager-canister/utils/evmTransaction', () => ({
+    sendSignedTransaction: jest.fn(),
+}));
+
+jest.mock('../../src/gm-account-manager-canister/utils/thresholdSigning', () => ({
+    getEthereumAddress: jest.fn(),
+}));
+
+import { sendSignedTransaction } from '../../src/gm-account-manager-canister/utils/evmTransaction';
+import { getEthereumAddress } from '../../src/gm-account-manager-canister/utils/thresholdSigning';
+
 describe('Smart Contract Utilities', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        // Mock default return values
+        (getEthereumAddress as jest.Mock).mockResolvedValue('0xCanisterAddress');
+        (sendSignedTransaction as jest.Mock).mockResolvedValue('0xtxhash123');
+    });
     describe('encodeUserData', () => {
         it('should encode user data correctly', () => {
             const user: User = {

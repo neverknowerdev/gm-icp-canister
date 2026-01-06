@@ -5,6 +5,8 @@ import * as config from '../src/gm-account-manager-canister/utils/config';
 import { TransactionReceipt, ParsedEvent } from '../src/gm-account-manager-canister/utils/types';
 import * as verifyTwitter from '../src/gm-account-manager-canister/events/verifyTwitter';
 import * as verifyFarcaster from '../src/gm-account-manager-canister/events/verifyFarcaster';
+import * as transactionTracker from '../src/gm-account-manager-canister/storage/transactionTracker';
+import * as userEvents from '../src/gm-account-manager-canister/events/userEvents';
 
 // Mock dependencies
 jest.mock('../src/gm-account-manager-canister/utils/evmRpc');
@@ -12,6 +14,8 @@ jest.mock('../src/gm-account-manager-canister/utils/eventParser');
 jest.mock('../src/gm-account-manager-canister/utils/config');
 jest.mock('../src/gm-account-manager-canister/events/verifyTwitter');
 jest.mock('../src/gm-account-manager-canister/events/verifyFarcaster');
+jest.mock('../src/gm-account-manager-canister/storage/transactionTracker');
+jest.mock('../src/gm-account-manager-canister/events/userEvents');
 
 describe('Event Processor', () => {
     const mockReceipt: TransactionReceipt = {
@@ -32,6 +36,9 @@ describe('Event Processor', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        // Mock transaction tracker - transactions are not processed by default
+        (transactionTracker.isTransactionProcessed as jest.Mock).mockReturnValue(false);
+        (transactionTracker.markTransactionProcessed as jest.Mock).mockImplementation(() => {});
     });
 
     it('should process event successfully', async () => {
@@ -104,7 +111,7 @@ describe('Event Processor', () => {
 
         await processEvent('Base Mainnet', '0xtxhash');
 
-        expect(eventParser.extractEvents).toHaveBeenCalled();
+        expect(eventParser.extractEvents).toHaveBeenCalledWith([], ['0xContract']);
     });
 
     it('should return early if no events found', async () => {
@@ -114,7 +121,8 @@ describe('Event Processor', () => {
 
         await processEvent('Base Mainnet', '0xtxhash');
 
-        expect(eventParser.extractEvents).toHaveBeenCalled();
+        expect(eventParser.extractEvents).toHaveBeenCalledWith([], ['0xContract']);
+        expect(transactionTracker.markTransactionProcessed).toHaveBeenCalledWith('0xtxhash');
     });
 
     it('should ignore events without handlers', async () => {
@@ -136,7 +144,7 @@ describe('Event Processor', () => {
         await processEvent('Base Mainnet', '0xtxhash');
 
         // Should complete without errors
-        expect(eventParser.extractEvents).toHaveBeenCalled();
+        expect(eventParser.extractEvents).toHaveBeenCalledWith([], ['0xContract']);
     });
 
     it('should handle handler errors gracefully', async () => {
@@ -165,8 +173,10 @@ describe('Event Processor', () => {
     });
 
     it('should handle transaction with undefined status', async () => {
-        const receiptWithoutStatus = { ...mockReceipt };
-        delete receiptWithoutStatus.status;
+        const receiptWithoutStatus: TransactionReceipt = { 
+            ...mockReceipt,
+            status: undefined as any
+        };
 
         (config.getContractAddresses as jest.Mock).mockReturnValue(['0xContract']);
         (evmRpc.fetchTransactionReceipt as jest.Mock).mockResolvedValue(receiptWithoutStatus);
@@ -174,7 +184,7 @@ describe('Event Processor', () => {
 
         await processEvent('Base Mainnet', '0xtxhash');
 
-        expect(eventParser.extractEvents).toHaveBeenCalled();
+        expect(eventParser.extractEvents).toHaveBeenCalledWith([], ['0xContract']);
     });
 
     it('should handle multiple events in one transaction', async () => {
@@ -205,8 +215,16 @@ describe('Event Processor', () => {
 
         await processEvent('Base Mainnet', '0xtxhash');
 
-        expect(verifyTwitter.verifyTwitter).toHaveBeenCalled();
-        expect(verifyFarcaster.verifyFarcaster).toHaveBeenCalled();
+        expect(verifyTwitter.verifyTwitter).toHaveBeenCalledWith(
+            mockEvents[0],
+            'Base Mainnet',
+            '0xfrom'
+        );
+        expect(verifyFarcaster.verifyFarcaster).toHaveBeenCalledWith(
+            mockEvents[1],
+            'Base Mainnet',
+            '0xfrom'
+        );
     });
 
     it('should handle transaction with missing to address', async () => {

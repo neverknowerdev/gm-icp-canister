@@ -4,12 +4,24 @@ import { extractEvents } from './utils/eventParser';
 import { verifyTwitter } from './events/verifyTwitter';
 import { verifyFarcaster } from './events/verifyFarcaster';
 import { getContractAddresses } from './utils/config';
+import { isTransactionProcessed, markTransactionProcessed } from './storage/transactionTracker';
+import { processUserEvent } from './events/userEvents';
 
-// Event handler registry
-const EVENT_HANDLERS: Record<string, (event: ParsedEvent, chain: string, transactionFrom: string) => Promise<void>> = {
+// Event handler registry for verification request events
+const VERIFICATION_EVENT_HANDLERS: Record<string, (event: ParsedEvent, chain: string, transactionFrom: string) => Promise<void>> = {
     'VerifyTwitterByAuthCodeRequested': verifyTwitter,
     'VerifyFarcasterRequested': verifyFarcaster,
 };
+
+// Event handler registry for user events from smart contract
+const USER_EVENT_NAMES = [
+    'UserCreated',
+    'UserRemoved',
+    'SocialAccountLinked',
+    'PrimaryWalletUpdated',
+    'WalletLinked',
+    'HumanVerificationUpdated',
+];
 
 /**
  * Main event processor entry point
@@ -26,6 +38,12 @@ export async function processEvent(
     transactionId: string
 ): Promise<void> {
     console.log(`Processing event for chain: ${chain}, tx: ${transactionId}`);
+
+    // 0. Check if transaction already processed (prevent duplicates)
+    if (isTransactionProcessed(transactionId)) {
+        console.log(`Transaction ${transactionId} already processed, skipping`);
+        return;
+    }
 
     // 1. Validate chain and get allowed contracts
     const allowedContracts = getContractAddresses(chain);
@@ -71,22 +89,39 @@ export async function processEvent(
 
     if (events.length === 0) {
         console.log(`No relevant events found in transaction ${transactionId}`);
+        // Mark as processed even if no events (prevents re-checking)
+        markTransactionProcessed(transactionId);
         return;
     }
 
     // 6. Route events to handlers
+    // Separate verification request events from user events
     for (const event of events) {
-        const handler = EVENT_HANDLERS[event.eventName];
-        if (handler) {
-            console.log(`Dispatching event ${event.eventName} to handler`);
+        if (VERIFICATION_EVENT_HANDLERS[event.eventName]) {
+            // This is a verification request event (VerifyTwitterByAuthCodeRequested, VerifyFarcasterRequested)
+            // These handlers will call createOrUpdateUser and process resulting events
+            console.log(`Dispatching verification event ${event.eventName} to handler`);
             try {
-                await handler(event, chain, receipt.from);
+                await VERIFICATION_EVENT_HANDLERS[event.eventName](event, chain, receipt.from);
             } catch (error: any) {
-                console.error(`Error handling event ${event.eventName}: ${error}`);
+                console.error(`Error handling verification event ${event.eventName}: ${error}`);
+            }
+        } else if (USER_EVENT_NAMES.includes(event.eventName)) {
+            // This is a user event (UserCreated, WalletLinked, etc.)
+            // Process it directly to update memory
+            console.log(`Processing user event ${event.eventName}`);
+            try {
+                await processUserEvent(event, chain);
+            } catch (error: any) {
+                console.error(`Error processing user event ${event.eventName}: ${error}`);
             }
         } else {
             console.log(`No handler found for event ${event.eventName}. Ignoring.`);
         }
     }
+
+    // 7. Mark transaction as processed
+    markTransactionProcessed(transactionId);
+    console.log(`Transaction ${transactionId} processing completed`);
 }
 

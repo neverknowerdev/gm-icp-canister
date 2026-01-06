@@ -1,11 +1,90 @@
-import { call, IDL, Principal } from 'azle';
 import { User } from '../userManagement/userTypes';
+import { encodeCreateOrUpdateUser } from './abiEncoder';
+import { getEthereumAddress } from './thresholdSigning';
+import { sendSignedTransaction } from './evmTransaction';
 
 // Smart contract interaction utilities
-// TODO: Replace with actual contract addresses and ABI
+
+// Chain ID mapping
+function getChainId(chain: string): number {
+    switch (chain) {
+        case 'Base Mainnet':
+            return 8453;
+        case 'WorldChain':
+            return 480; // TODO: Verify actual chain ID
+        case 'Monad':
+            return 10143; // TODO: Verify actual chain ID
+        default:
+            throw new Error(`Unknown chain: ${chain}`);
+    }
+}
 
 /**
- * Calls the smart contract's createUser function
+ * Calls the smart contract's createOrUpdateUser function
+ * This is the main function that updates user data on the smart contract
+ * 
+ * @param contractAddress - The contract address to call
+ * @param chain - The chain name
+ * @param userId - The global userId
+ * @param wallet - The wallet address for the current chain
+ * @param twitterId - Twitter ID (0 if none)
+ * @param farcasterId - Farcaster ID (0 if none)
+ * @param walletsForChain - Array of wallets for the current chain only
+ * @returns Transaction hash if successful, null otherwise
+ */
+export async function callCreateOrUpdateUser(
+    contractAddress: string,
+    chain: string,
+    userId: bigint,
+    wallet: string,
+    twitterId: bigint,
+    farcasterId: bigint,
+    walletsForChain: Array<{ wallet: string, chain: string }>
+): Promise<string | null> {
+    try {
+        console.log(`Calling createOrUpdateUser on contract ${contractAddress}:`);
+        console.log(`  userId: ${userId}`);
+        console.log(`  wallet: ${wallet}`);
+        console.log(`  twitterId: ${twitterId}`);
+        console.log(`  farcasterId: ${farcasterId}`);
+        console.log(`  walletsForChain: ${walletsForChain.length} wallets`);
+
+        // 1. ABI encode the function call
+        const walletAddresses = walletsForChain.map(w => w.wallet);
+        const encodedData = encodeCreateOrUpdateUser(
+            userId,
+            wallet,
+            twitterId,
+            farcasterId,
+            walletAddresses
+        );
+
+        // 2. Get canister's Ethereum address
+        const canisterAddress = await getEthereumAddress();
+
+        // 3. Get chain ID
+        const chainId = getChainId(chain);
+
+        // 4. Send signed transaction via EVM RPC canister
+        // sendSignedTransaction will handle transaction serialization and signing internally
+        const txHash = await sendSignedTransaction(
+            chain,
+            chainId,
+            contractAddress,
+            encodedData,
+            canisterAddress
+        );
+
+        console.log(`Transaction sent successfully: ${txHash}`);
+        return txHash;
+    } catch (error: any) {
+        console.error(`Error calling createOrUpdateUser: ${error}`);
+        return null;
+    }
+}
+
+/**
+ * Calls the smart contract's createUser function (legacy, use createOrUpdateUser instead)
  */
 export async function callCreateUser(
     contractAddress: string,
@@ -16,36 +95,16 @@ export async function callCreateUser(
     farcasterId: bigint
 ): Promise<boolean> {
     try {
-        // TODO: Implement actual smart contract call using EVM RPC canister
-        // This would use eth_call or eth_sendRawTransaction depending on whether
-        // the canister has permission to send transactions
-        
-        console.log(`Calling createUser on contract ${contractAddress}:`);
-        console.log(`  userId: ${userId}`);
-        console.log(`  wallet: ${wallet}`);
-        console.log(`  twitterId: ${twitterId}`);
-        console.log(`  farcasterId: ${farcasterId}`);
-
-        // Example structure for eth_call:
-        // const result = await call(EVM_RPC_CANISTER_ID, 'eth_call', {
-        //     args: [rpcServices, rpcConfig, {
-        //         transaction: {
-        //             to: contractAddress,
-        //             data: encodedFunctionCall, // ABI-encoded createUser call
-        //         },
-        //         block: { Latest: null },
-        //     }],
-        //     paramIdlTypes: [...],
-        //     returnIdlType: ...,
-        // });
-
-        // For now, just log the call
-        // In production, you'll need to:
-        // 1. Encode the function call using ABI encoding
-        // 2. Use eth_call or eth_sendRawTransaction via EVM RPC canister
-        // 3. Handle the response
-
-        return true;
+        const txHash = await callCreateOrUpdateUser(
+            contractAddress,
+            chain,
+            userId,
+            wallet,
+            twitterId,
+            farcasterId,
+            [{ wallet, chain }]
+        );
+        return txHash !== null;
     } catch (error: any) {
         console.error(`Error calling createUser: ${error}`);
         return false;
@@ -53,7 +112,7 @@ export async function callCreateUser(
 }
 
 /**
- * Calls the smart contract's addUser function
+ * Calls the smart contract's addUser function (legacy, use createOrUpdateUser instead)
  */
 export async function callAddUser(
     contractAddress: string,
@@ -62,20 +121,20 @@ export async function callAddUser(
     userData: User
 ): Promise<boolean> {
     try {
-        console.log(`Calling addUser on contract ${contractAddress}:`);
-        console.log(`  userId: ${userId}`);
-        // Note: JSON.stringify cannot serialize BigInt, so we'll log the user data in a different way
-        console.log(`  userData:`, {
-            ...userData,
-            userId: userData.userId.toString(),
-            twitterId: userData.twitterId.toString(),
-            farcasterId: userData.farcasterId.toString(),
-        });
+        // Get wallets for the current chain only
+        const walletsForChain = userData.wallets.filter(w => w.chain === chain);
+        const primaryWallet = walletsForChain.length > 0 ? walletsForChain[0].wallet : userData.primaryWallet;
 
-        // TODO: Implement actual smart contract call
-        // Similar to callCreateUser but with addUser function signature
-
-        return true;
+        const txHash = await callCreateOrUpdateUser(
+            contractAddress,
+            chain,
+            userData.userId,
+            primaryWallet,
+            userData.twitterId,
+            userData.farcasterId,
+            walletsForChain
+        );
+        return txHash !== null;
     } catch (error: any) {
         console.error(`Error calling addUser: ${error}`);
         return false;
@@ -97,4 +156,3 @@ export function encodeUserData(user: User): any {
         wallets: user.wallets,
     };
 }
-

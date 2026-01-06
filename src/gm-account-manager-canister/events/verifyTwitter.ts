@@ -1,24 +1,27 @@
 import { ParsedEvent } from '../utils/types';
 import {
     getUserByTwitterId,
-    getUserByWallet,
-    createUser,
-    addWalletToUser,
-    updateUserTwitterId,
     getUser,
 } from '../userManagement/userStore';
-import { callCreateUser, callAddUser, encodeUserData } from '../utils/smartContract';
+import { callCreateOrUpdateUser } from '../utils/smartContract';
 import { getContractAddress } from '../utils/config';
+import { generateNextUserId } from '../storage/atomicCounter';
+import { fetchTransactionReceipt } from '../utils/evmRpc';
+import { extractEvents } from '../utils/eventParser';
+import { getContractAddresses } from '../utils/config';
+import { processUserEvent } from './userEvents';
 
 /**
  * Handles VerifyTwitterByAuthCodeRequested event
  * 
- * Logic:
+ * New flow:
  * 1. Extract Twitter ID and wallet from event args
- * 2. Check if Twitter ID is globally unique
- * 3. If Twitter ID exists -> add wallet to existing user
- * 4. If new user -> create new user with global userId
- * 5. Call smart contract (createUser or addUser)
+ * 2. Check if Twitter ID exists globally (across all chains)
+ * 3. If exists: Get user data (userId, twitterId, farcasterId, wallets for current chain only), call createOrUpdateUser
+ * 4. If new: Generate new userId atomically, call createOrUpdateUser with available info
+ * 5. Wait for transaction receipt
+ * 6. Process all events from that transaction (UserCreated, WalletLinked, etc.)
+ * 7. NO direct memory modifications - only via events from contract
  */
 export async function verifyTwitter(
     event: ParsedEvent,
@@ -28,9 +31,7 @@ export async function verifyTwitter(
     console.log(`Processing VerifyTwitterByAuthCodeRequested event`);
     console.log(`Event args: ${JSON.stringify(event.args)}`);
 
-    // TODO: Parse event args properly based on ABI
-    // For now, assuming args structure (needs to match Solidity event)
-    // Expected: VerifyTwitterByAuthCodeRequested(address indexed wallet, uint256 indexed twitterId, ...)
+    // Extract Twitter ID and wallet from event
     const wallet = transactionFrom.toLowerCase(); // Use transaction from address as wallet
     const twitterId = event.args.topic1 ? BigInt(event.args.topic1) : 0n;
 
@@ -39,56 +40,81 @@ export async function verifyTwitter(
         return;
     }
 
-    // Check if Twitter ID is globally unique
+    const contractAddress = getContractAddress(chain);
+    if (!contractAddress) {
+        console.error(`No contract address configured for chain: ${chain}`);
+        return;
+    }
+
+    // Check if Twitter ID exists globally
     const existingUserByTwitter = getUserByTwitterId(twitterId);
     
+    let userId: bigint;
+    let twitterIdToSend: bigint = twitterId;
+    let farcasterIdToSend: bigint = 0n;
+    let walletsForChain: Array<{ wallet: string, chain: string }> = [{ wallet, chain }];
+
     if (existingUserByTwitter) {
-        // Twitter ID already exists - add wallet to existing user
+        // Twitter ID already exists - use existing userId
         console.log(`Twitter ID ${twitterId} already exists for user ${existingUserByTwitter.userId}`);
+        userId = existingUserByTwitter.userId;
+        twitterIdToSend = existingUserByTwitter.twitterId;
+        farcasterIdToSend = existingUserByTwitter.farcasterId;
         
-        const walletAdded = addWalletToUser(existingUserByTwitter.userId, wallet, chain);
-        if (walletAdded) {
-            console.log(`Added wallet ${wallet} on ${chain} to user ${existingUserByTwitter.userId}`);
-            
-            // Update user data and call smart contract
-            const updatedUser = getUser(existingUserByTwitter.userId);
-            if (updatedUser) {
-                const contractAddress = getContractAddress(chain);
-                if (contractAddress) {
-                    await callAddUser(contractAddress, chain, updatedUser.userId, updatedUser);
-                }
-            }
-        } else {
-            console.error(`Failed to add wallet ${wallet} to user ${existingUserByTwitter.userId}`);
+        // Get wallets for current chain only
+        walletsForChain = existingUserByTwitter.wallets.filter(w => w.chain === chain);
+        if (walletsForChain.length === 0) {
+            walletsForChain = [{ wallet, chain }];
         }
     } else {
-        // New user - check if wallet already exists
-        const existingUserByWallet = getUserByWallet(wallet, chain);
-        
-        if (existingUserByWallet) {
-            // Wallet exists but no Twitter ID - update Twitter ID
-            console.log(`Wallet ${wallet} exists, updating Twitter ID`);
-            updateUserTwitterId(existingUserByWallet.userId, twitterId);
-            
-            // Update user data and call smart contract
-            const updatedUser = getUser(existingUserByWallet.userId);
-            if (updatedUser) {
-                const contractAddress = getContractAddress(chain);
-                if (contractAddress) {
-                    await callAddUser(contractAddress, chain, updatedUser.userId, updatedUser);
-                }
-            }
-        } else {
-            // Completely new user - create with global userId
-            const newUser = createUser(wallet, chain, twitterId, 0n);
-            console.log(`Created new user ${newUser.userId} with Twitter ID ${twitterId}`);
-            
-            // Call smart contract: createUser(userId, wallet, twitterId, farcasterId=0)
-            const contractAddress = getContractAddress(chain);
-            if (contractAddress) {
-                await callCreateUser(contractAddress, chain, newUser.userId, wallet, twitterId, 0n);
-            }
-        }
+        // New user - generate userId atomically
+        console.log(`Twitter ID ${twitterId} is new - generating userId`);
+        userId = await generateNextUserId();
+        console.log(`Generated userId: ${userId}`);
     }
-}
 
+    // Call createOrUpdateUser on smart contract
+    console.log(`Calling createOrUpdateUser for userId=${userId}, wallet=${wallet}, twitterId=${twitterIdToSend}`);
+    const txHash = await callCreateOrUpdateUser(
+        contractAddress,
+        chain,
+        userId,
+        wallet,
+        twitterIdToSend,
+        farcasterIdToSend,
+        walletsForChain
+    );
+
+    if (!txHash) {
+        console.error(`Failed to call createOrUpdateUser - transaction not sent`);
+        return;
+    }
+
+    console.log(`Transaction sent: ${txHash}, waiting for receipt...`);
+
+    // Wait for transaction receipt
+    const receipt = await fetchTransactionReceipt(chain, txHash);
+    if (!receipt) {
+        console.error(`Failed to fetch transaction receipt for ${txHash}`);
+        return;
+    }
+
+    // Verify transaction status
+    if (receipt.status !== undefined && receipt.status !== 1n) {
+        console.error(`Transaction ${txHash} failed (status: ${receipt.status})`);
+        return;
+    }
+
+    console.log(`Transaction ${txHash} confirmed, processing events...`);
+
+    // Extract and process all events from the transaction
+    const allowedContracts = getContractAddresses(chain);
+    const events = extractEvents(receipt.logs, allowedContracts);
+
+    for (const userEvent of events) {
+        console.log(`Processing event from createOrUpdateUser transaction: ${userEvent.eventName}`);
+        await processUserEvent(userEvent, chain);
+    }
+
+    console.log(`Completed processing VerifyTwitterByAuthCodeRequested for Twitter ID ${twitterId}`);
+}

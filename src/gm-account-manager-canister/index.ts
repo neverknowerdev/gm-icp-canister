@@ -3,6 +3,8 @@ import { processEvent } from './eventProcessor';
 import { initConfig } from './utils/config';
 import { getUser, getUserByTwitterId, getUserByFarcasterId, getTwitterUsers as getTwitterUsersFromStore, getFarcasterUsers as getFarcasterUsersFromStore } from './userManagement/userStore';
 import { getEthereumAddress } from './utils/thresholdSigning';
+import { initializeScanner, scheduleScanner } from './scanner/scannerScheduler';
+import { scanAllChains } from './scanner/transactionScanner';
 
 interface Config {
     contracts: {
@@ -14,6 +16,34 @@ interface Config {
 }
 
 export default class {
+    constructor() {
+        // Initialize scanner on canister creation
+        try {
+            initializeScanner();
+        } catch (error: any) {
+            console.error(`Error initializing scanner: ${error}`);
+        }
+    }
+
+    /**
+     * Scanner callback - called by ICP timer system
+     * This is an internal method called automatically at the scheduled interval
+     */
+    @update([], IDL.Null)
+    async scannerCallback(): Promise<null> {
+        console.log('Scanner callback fired - scanning for unprocessed transactions...');
+        try {
+            await scanAllChains();
+            // Reschedule for next interval
+            scheduleScanner();
+        } catch (error: any) {
+            console.error(`Error in scanner callback: ${error}`);
+            // Still reschedule even if there's an error
+            scheduleScanner();
+        }
+        return null;
+    }
+
     @query([IDL.Text], IDL.Text)
     greet(name: string): string {
         return `Hello, ${name}!`;
@@ -41,6 +71,12 @@ export default class {
         eventSignatures: IDL.Record({
             'VerifyFarcasterRequested': IDL.Text,
             'VerifyTwitterByAuthCodeRequested': IDL.Text,
+            'UserCreated': IDL.Text,
+            'UserRemoved': IDL.Text,
+            'SocialAccountLinked': IDL.Text,
+            'PrimaryWalletUpdated': IDL.Text,
+            'WalletLinked': IDL.Text,
+            'HumanVerificationUpdated': IDL.Text,
         }),
     })], IDL.Null)
     setConfig(config: Config): null {

@@ -1,6 +1,5 @@
-import { call, IDL } from 'azle';
-
-import { Principal } from 'azle';
+import { call, IDL, Principal } from 'azle';
+import { keccak256 } from './keccak256';
 
 const MANAGEMENT_CANISTER = Principal.fromText('aaaaa-aa');
 const KEY_NAME = 'gm_account_manager_wallet';
@@ -26,31 +25,6 @@ export function setKeyId(name: string, useSecp256k1: boolean = true): void {
 
 export function setDerivationPath(path: Uint8Array[]): void {
     derivationPath = path;
-}
-
-/**
- * WARNING: This is NOT a real keccak256 implementation!
- * This is a placeholder XOR function that will NOT generate correct Ethereum addresses.
- * 
- * TODO: Replace with proper keccak256 implementation or use a library.
- * For ICP canisters, we may need to:
- * 1. Use a WebAssembly keccak256 implementation
- * 2. Use a pure JavaScript keccak256 library (if compatible with Azle)
- * 3. Call an external service for hashing
- * 
- * Current implementation will generate INCORRECT Ethereum addresses!
- * This is a CRITICAL issue that needs to be fixed before production use.
- */
-function keccak256(data: Uint8Array): Uint8Array {
-    // FIXME: This is NOT real keccak256 - just XOR, produces incorrect hashes!
-    const hash = new Uint8Array(32);
-    for (let i = 0; i < data.length; i++) {
-        hash[i % 32] ^= data[i];
-    }
-    for (let i = 0; i < 32; i++) {
-        hash[i] = (hash[i] * 31 + i) % 256;
-    }
-    return hash;
 }
 
 export async function getPublicKey(): Promise<Uint8Array> {
@@ -84,6 +58,59 @@ export async function getPublicKey(): Promise<Uint8Array> {
     } catch (error: any) {
         console.error(`Error getting public key: ${error}`);
         throw error;
+    }
+}
+
+/**
+ * Sign data using threshold ECDSA
+ * @param data - Data to sign (typically a transaction hash)
+ * @returns Signature as Uint8Array (r, s, v format)
+ */
+export async function signWithThresholdEcdsa(data: Uint8Array): Promise<Uint8Array> {
+    try {
+        const messageHash = keccak256(data);
+        const derivationPathBytes = derivationPath.map(p => Array.from(p));
+
+        const result = await call(MANAGEMENT_CANISTER, 'sign_with_ecdsa', {
+            args: [{
+                message_hash: Array.from(messageHash),
+                derivation_path: derivationPathBytes,
+                key_id: keyId,
+            }],
+            paramIdlTypes: [IDL.Record({
+                message_hash: IDL.Vec(IDL.Nat8),
+                derivation_path: IDL.Vec(IDL.Vec(IDL.Nat8)),
+                key_id: IDL.Record({
+                    curve: IDL.Variant({
+                        secp256k1: IDL.Null,
+                        secp256r1: IDL.Null,
+                    }),
+                    name: IDL.Text,
+                }),
+            })],
+            returnIdlType: IDL.Record({
+                signature: IDL.Vec(IDL.Nat8),
+            }),
+        });
+
+        const signatureBytes = new Uint8Array(result.signature);
+
+        if (signatureBytes.length !== 64 && signatureBytes.length !== 65) {
+            throw new Error(`Invalid signature length: ${signatureBytes.length} (expected 64 or 65 bytes)`);
+        }
+
+        // If signature is 64 bytes, add default v value (27)
+        if (signatureBytes.length === 64) {
+            const fullSignature = new Uint8Array(65);
+            fullSignature.set(signatureBytes, 0);
+            fullSignature[64] = 27; // Default 'v' value for secp256k1
+            return fullSignature;
+        }
+
+        return signatureBytes;
+    } catch (error: any) {
+        console.error(`Error signing with threshold ECDSA: ${error}`);
+        throw new Error(`Threshold ECDSA signing failed: ${error.message || error}`);
     }
 }
 

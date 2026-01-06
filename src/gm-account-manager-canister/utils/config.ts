@@ -33,6 +33,12 @@ function loadConfig(): Config {
         eventSignatures: {
             'VerifyFarcasterRequested': '',
             'VerifyTwitterByAuthCodeRequested': '',
+            'UserCreated': '',
+            'UserRemoved': '',
+            'SocialAccountLinked': '',
+            'PrimaryWalletUpdated': '',
+            'WalletLinked': '',
+            'HumanVerificationUpdated': '',
         },
     };
 
