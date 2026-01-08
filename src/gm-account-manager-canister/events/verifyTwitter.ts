@@ -34,10 +34,10 @@ export async function verifyTwitter(
 
     // Extract auth code and wallet from event
     const wallet = transactionFrom.toLowerCase(); // Use transaction from address as wallet
-    
+
     // Extract auth code from event data (decoded string from ABI-encoded data)
     const authCode = event.args.authCode || event.args.data;
-    
+
     if (!authCode || authCode === '0x' || (typeof authCode === 'string' && authCode.startsWith('0x') && authCode.length < 10)) {
         console.error('No auth code found in event. Event must contain Twitter OAuth auth code.');
         return;
@@ -48,7 +48,7 @@ export async function verifyTwitter(
     if (cleanAuthCode.startsWith('0x')) {
         cleanAuthCode = cleanAuthCode.slice(2);
     }
-    
+
     // If it's still hex-encoded, try to decode as string
     // Otherwise, assume it's already a plain string
     let authCodeString = cleanAuthCode;
@@ -72,11 +72,18 @@ export async function verifyTwitter(
     let twitterId: bigint;
     try {
         twitterId = await verifyTwitterAuthCodeBigInt(authCodeString);
+        if (twitterId === 0n) {
+            console.error('Failed to verify Twitter: got zero twitter id');
+            return;
+        }
+
         console.log(`Successfully verified Twitter auth code, Twitter ID: ${twitterId}`);
     } catch (error: any) {
         console.error(`Failed to verify Twitter auth code: ${error.message}`);
         return;
     }
+
+
 
     const contractAddress = getContractAddress(chain);
     if (!contractAddress) {
@@ -86,7 +93,7 @@ export async function verifyTwitter(
 
     // Check if Twitter ID exists globally
     const existingUserByTwitter = getUserByTwitterId(twitterId);
-    
+
     let userId: bigint;
     let twitterIdToSend: bigint = twitterId;
     let farcasterIdToSend: bigint = 0n;
@@ -98,7 +105,7 @@ export async function verifyTwitter(
         userId = existingUserByTwitter.userId;
         twitterIdToSend = existingUserByTwitter.twitterId;
         farcasterIdToSend = existingUserByTwitter.farcasterId;
-        
+
         // Get wallets for current chain only
         walletsForChain = existingUserByTwitter.wallets.filter(w => w.chain === chain);
         if (walletsForChain.length === 0) {

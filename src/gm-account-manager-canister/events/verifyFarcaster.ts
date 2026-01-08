@@ -33,10 +33,10 @@ export async function verifyFarcaster(
 
     // Extract auth token and wallet from event
     const wallet = transactionFrom.toLowerCase(); // Use transaction from address as wallet
-    
+
     // Extract auth token from event data (decoded string from ABI-encoded data)
     const authToken = event.args.authToken || event.args.authCode || event.args.data;
-    
+
     if (!authToken || authToken === '0x' || (typeof authToken === 'string' && authToken.startsWith('0x') && authToken.length < 10)) {
         console.error('No auth token found in event. Event must contain Farcaster auth token.');
         return;
@@ -47,7 +47,7 @@ export async function verifyFarcaster(
     if (cleanAuthToken.startsWith('0x')) {
         cleanAuthToken = cleanAuthToken.slice(2);
     }
-    
+
     // If we have a decoded string from parsing, use that
     let authTokenString = cleanAuthToken;
     if (event.args.authToken && typeof event.args.authToken === 'string') {
@@ -60,11 +60,18 @@ export async function verifyFarcaster(
     let farcasterId: bigint;
     try {
         farcasterId = await verifyFarcasterAuthBigInt(authTokenString);
+        if (farcasterId === 0n) {
+            console.error('Failed to verify Farcaster: got zero farcaster id');
+            return;
+        }
+
         console.log(`Successfully verified Farcaster auth token, Farcaster ID (FID): ${farcasterId}`);
     } catch (error: any) {
         console.error(`Failed to verify Farcaster auth token: ${error.message}`);
         return;
     }
+
+
 
     const contractAddress = getContractAddress(chain);
     if (!contractAddress) {
@@ -74,7 +81,7 @@ export async function verifyFarcaster(
 
     // Check if Farcaster ID exists globally
     const existingUserByFarcaster = getUserByFarcasterId(farcasterId);
-    
+
     let userId: bigint;
     let twitterIdToSend: bigint = 0n;
     let farcasterIdToSend: bigint = farcasterId;
@@ -86,7 +93,7 @@ export async function verifyFarcaster(
         userId = existingUserByFarcaster.userId;
         twitterIdToSend = existingUserByFarcaster.twitterId;
         farcasterIdToSend = existingUserByFarcaster.farcasterId;
-        
+
         // Get wallets for current chain only
         walletsForChain = existingUserByFarcaster.wallets.filter(w => w.chain === chain);
         if (walletsForChain.length === 0) {
