@@ -1,5 +1,5 @@
 import { verifyFarcaster } from '../../src/gm-account-manager-canister/events/verifyFarcaster';
-import { ParsedEvent } from '../../src/gm-account-manager-canister/utils/types';
+import { ParsedEvent, CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from '../../src/gm-account-manager-canister/utils/types';
 import * as userStore from '../../src/gm-account-manager-canister/userManagement/userStore';
 import * as smartContract from '../../src/gm-account-manager-canister/utils/smartContract';
 import * as config from '../../src/gm-account-manager-canister/utils/config';
@@ -49,48 +49,48 @@ describe('verifyFarcaster Handler', () => {
     it('should create new user when Farcaster ID is unique', async () => {
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(null);
 
-        await verifyFarcaster(mockEvent, 'Base Mainnet', '0xWallet');
+        await verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
 
         expect(atomicCounter.generateNextUserId).toHaveBeenCalled();
         expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalledWith(
             '0xContract',
-            'Base Mainnet',
+            CHAIN_BASE_MAINNET,
             1n,
             '0xwallet',
             0n,
             200n,
-            [{ wallet: '0xwallet', chain: 'Base Mainnet' }]
+            [{ wallet: '0xwallet', chain: CHAIN_BASE_MAINNET }]
         );
-        expect(evmRpc.fetchTransactionReceipt).toHaveBeenCalledWith('Base Mainnet', '0xtxhash123');
+        expect(evmRpc.fetchTransactionReceipt).toHaveBeenCalledWith(CHAIN_BASE_MAINNET, '0xtxhash123');
         expect(eventParser.extractEvents).toHaveBeenCalled();
     });
 
     it('should add wallet to existing user when Farcaster ID exists', async () => {
         const existingUser = {
             userId: 1n,
-            chains: ['Base Mainnet'],
+            chains: [CHAIN_BASE_MAINNET],
             twitterId: 0n,
             farcasterId: 200n,
             isVerified: false,
             verifications: [],
             primaryWallet: '0xoldwallet',
-            primaryChain: 'Base Mainnet',
-            wallets: [{ wallet: '0xoldwallet', chain: 'Base Mainnet' }],
+            primaryChain: CHAIN_BASE_MAINNET,
+            wallets: [{ wallet: '0xoldwallet', chain: CHAIN_BASE_MAINNET }],
         };
 
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(existingUser);
 
-        await verifyFarcaster(mockEvent, 'WorldChain', '0xWallet');
+        await verifyFarcaster(mockEvent, CHAIN_WORLDCHAIN, '0xWallet');
 
         expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
         expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalledWith(
             '0xContract',
-            'WorldChain',
+            CHAIN_WORLDCHAIN,
             1n,
             '0xwallet',
             0n,
             200n,
-            [{ wallet: '0xwallet', chain: 'WorldChain' }]
+            [{ wallet: '0xwallet', chain: CHAIN_WORLDCHAIN }]
         );
     });
 
@@ -99,7 +99,7 @@ describe('verifyFarcaster Handler', () => {
         // If Farcaster ID doesn't exist, we generate new userId
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(null);
 
-        await verifyFarcaster(mockEvent, 'Base Mainnet', '0xWallet');
+        await verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
 
         expect(atomicCounter.generateNextUserId).toHaveBeenCalled();
         expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalled();
@@ -111,7 +111,7 @@ describe('verifyFarcaster Handler', () => {
             args: {}, // No auth token
         };
 
-        await verifyFarcaster(invalidEvent, 'Base Mainnet', '0xWallet');
+        await verifyFarcaster(invalidEvent, CHAIN_BASE_MAINNET, '0xWallet');
 
         expect(farcasterVerification.verifyFarcasterAuthBigInt).not.toHaveBeenCalled();
         expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
@@ -123,7 +123,7 @@ describe('verifyFarcaster Handler', () => {
             new Error('Invalid auth token')
         );
 
-        await verifyFarcaster(mockEvent, 'Base Mainnet', '0xWallet');
+        await verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
 
         expect(farcasterVerification.verifyFarcasterAuthBigInt).toHaveBeenCalled();
         expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
@@ -136,7 +136,7 @@ describe('verifyFarcaster Handler', () => {
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(null);
         (smartContract.callCreateOrUpdateUser as jest.Mock).mockResolvedValue(null);
 
-        await verifyFarcaster(mockEvent, 'WorldChain', '0xWallet');
+        await verifyFarcaster(mockEvent, CHAIN_WORLDCHAIN, '0xWallet');
 
         expect(evmRpc.fetchTransactionReceipt).not.toHaveBeenCalled();
     });
@@ -144,16 +144,16 @@ describe('verifyFarcaster Handler', () => {
     it('should handle case-insensitive wallet addresses', async () => {
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(null);
 
-        await verifyFarcaster(mockEvent, 'Base Mainnet', '0xWALLET'); // Different case
+        await verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWALLET'); // Different case
 
         expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalledWith(
             '0xContract',
-            'Base Mainnet',
+            CHAIN_BASE_MAINNET,
             1n,
             '0xwallet', // Should be lowercase
             0n,
             200n,
-            [{ wallet: '0xwallet', chain: 'Base Mainnet' }]
+            [{ wallet: '0xwallet', chain: CHAIN_BASE_MAINNET }]
         );
     });
 
@@ -161,7 +161,7 @@ describe('verifyFarcaster Handler', () => {
         (config.getContractAddress as jest.Mock).mockReturnValue(null);
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(null);
 
-        await verifyFarcaster(mockEvent, 'Base Mainnet', '0xWallet');
+        await verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
 
         expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
         expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();

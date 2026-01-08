@@ -2,29 +2,16 @@ import { User } from '../userManagement/userTypes';
 import { encodeCreateOrUpdateUser } from './abiEncoder';
 import { getEthereumAddress } from './thresholdSigning';
 import { sendSignedTransaction } from './evmTransaction';
+import { Chain } from './types';
 
 // Smart contract interaction utilities
-
-// Chain ID mapping
-function getChainId(chain: string): number {
-    switch (chain) {
-        case 'Base Mainnet':
-            return 8453;
-        case 'WorldChain':
-            return 480; // TODO: Verify actual chain ID
-        case 'Monad':
-            return 10143; // TODO: Verify actual chain ID
-        default:
-            throw new Error(`Unknown chain: ${chain}`);
-    }
-}
 
 /**
  * Calls the smart contract's createOrUpdateUser function
  * This is the main function that updates user data on the smart contract
  * 
  * @param contractAddress - The contract address to call
- * @param chain - The chain name
+ * @param chain - The chain ID
  * @param userId - The global userId
  * @param wallet - The wallet address for the current chain
  * @param twitterId - Twitter ID (0 if none)
@@ -34,12 +21,12 @@ function getChainId(chain: string): number {
  */
 export async function callCreateOrUpdateUser(
     contractAddress: string,
-    chain: string,
+    chain: Chain,
     userId: bigint,
     wallet: string,
     twitterId: bigint,
     farcasterId: bigint,
-    walletsForChain: Array<{ wallet: string, chain: string }>
+    walletsForChain: Array<{ wallet: string, chain: Chain }>
 ): Promise<string | null> {
     try {
         console.log(`Calling createOrUpdateUser on contract ${contractAddress}:`);
@@ -62,14 +49,10 @@ export async function callCreateOrUpdateUser(
         // 2. Get canister's Ethereum address
         const canisterAddress = await getEthereumAddress();
 
-        // 3. Get chain ID
-        const chainId = getChainId(chain);
-
-        // 4. Send signed transaction via EVM RPC canister
+        // 3. Send signed transaction via EVM RPC canister
         // sendSignedTransaction will handle transaction serialization and signing internally
         const txHash = await sendSignedTransaction(
             chain,
-            chainId,
             contractAddress,
             encodedData,
             canisterAddress
@@ -88,7 +71,7 @@ export async function callCreateOrUpdateUser(
  */
 export async function callCreateUser(
     contractAddress: string,
-    chain: string,
+    chain: Chain,
     userId: bigint,
     wallet: string,
     twitterId: bigint,
@@ -116,7 +99,7 @@ export async function callCreateUser(
  */
 export async function callAddUser(
     contractAddress: string,
-    chain: string,
+    chain: Chain,
     userId: bigint,
     userData: User
 ): Promise<boolean> {

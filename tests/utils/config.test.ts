@@ -5,6 +5,7 @@ import {
     getEventSignature,
     getAllEventSignatures,
 } from '../../src/gm-account-manager-canister/utils/config';
+import { CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from '../../src/gm-account-manager-canister/utils/types';
 
 describe('Config Utilities', () => {
     beforeEach(() => {
@@ -13,7 +14,6 @@ describe('Config Utilities', () => {
             contracts: {
                 'Base Mainnet': [],
                 'WorldChain': [],
-                'Monad': [],
             },
             eventSignatures: {},
         });
@@ -25,7 +25,6 @@ describe('Config Utilities', () => {
                 contracts: {
                     'Base Mainnet': ['0xContract1'],
                     'WorldChain': ['0xContract2'],
-                    'Monad': [],
                 },
                 eventSignatures: {
                     'VerifyFarcasterRequested': '0x123',
@@ -35,7 +34,7 @@ describe('Config Utilities', () => {
 
             initConfig(config);
 
-            expect(getContractAddresses('Base Mainnet')).toEqual(['0xContract1']);
+            expect(getContractAddresses(CHAIN_BASE_MAINNET)).toEqual(['0xContract1']);
             expect(getEventSignature('VerifyFarcasterRequested')).toBe('0x123');
         });
     });
@@ -46,17 +45,16 @@ describe('Config Utilities', () => {
                 contracts: {
                     'Base Mainnet': ['0xContract1', '0xContract2'],
                     'WorldChain': [],
-                    'Monad': [],
                 },
                 eventSignatures: {},
             });
 
-            const addresses = getContractAddresses('Base Mainnet');
+            const addresses = getContractAddresses(CHAIN_BASE_MAINNET);
             expect(addresses).toEqual(['0xContract1', '0xContract2']);
         });
 
         it('should return empty array for unconfigured chain', () => {
-            const addresses = getContractAddresses('UnknownChain');
+            const addresses = getContractAddresses(9999); // Unknown chain ID
             expect(addresses).toEqual([]);
         });
     });
@@ -67,17 +65,16 @@ describe('Config Utilities', () => {
                 contracts: {
                     'Base Mainnet': ['0xContract1', '0xContract2'],
                     'WorldChain': [],
-                    'Monad': [],
                 },
                 eventSignatures: {},
             });
 
-            const address = getContractAddress('Base Mainnet');
+            const address = getContractAddress(CHAIN_BASE_MAINNET);
             expect(address).toBe('0xContract1');
         });
 
         it('should return null if no contracts configured', () => {
-            const address = getContractAddress('WorldChain');
+            const address = getContractAddress(CHAIN_WORLDCHAIN);
             expect(address).toBeNull();
         });
     });
@@ -88,7 +85,6 @@ describe('Config Utilities', () => {
                 contracts: {
                     'Base Mainnet': [],
                     'WorldChain': [],
-                    'Monad': [],
                 },
                 eventSignatures: {
                     'VerifyFarcasterRequested': '0x123456',
@@ -116,7 +112,6 @@ describe('Config Utilities', () => {
                 contracts: {
                     'Base Mainnet': [],
                     'WorldChain': [],
-                    'Monad': [],
                 },
                 eventSignatures: signatures,
             });

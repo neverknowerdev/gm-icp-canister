@@ -7,6 +7,9 @@ import { initializeScanner, scheduleScanner } from './scanner/scannerScheduler';
 import { scanAllChains } from './scanner/transactionScanner';
 import { initTwitterConfig } from './utils/twitterVerification';
 import { initFarcasterConfig } from './utils/farcasterVerification';
+import { Chain, CHAINS, isValidChain } from './utils/types';
+import { initializeCleanupScheduler, scheduleCleanup } from './storage/storageCleanerScheduler';
+import { cleanStorage } from './storage/storageCleaner';
 
 interface Config {
     contracts: {
@@ -24,6 +27,13 @@ export default class {
             initializeScanner();
         } catch (error: any) {
             console.error(`Error initializing scanner: ${error}`);
+        }
+
+        // Initialize storage cleanup scheduler on canister creation
+        try {
+            initializeCleanupScheduler();
+        } catch (error: any) {
+            console.error(`Error initializing storage cleanup scheduler: ${error}`);
         }
     }
 
@@ -46,14 +56,38 @@ export default class {
         return null;
     }
 
+    /**
+     * Cleanup callback - called by ICP timer system daily at 1:00 AM UTC
+     * This is an internal method called automatically at the scheduled time
+     */
+    @update([], IDL.Null)
+    async cleanupCallback(): Promise<null> {
+        console.log('Cleanup callback fired - cleaning storage...');
+        try {
+            await cleanStorage();
+            // Reschedule for next day
+            scheduleCleanup();
+        } catch (error: any) {
+            console.error(`Error in cleanup callback: ${error}`);
+            // Still reschedule even if there's an error
+            scheduleCleanup();
+        }
+        return null;
+    }
+
     @query([IDL.Text], IDL.Text)
     greet(name: string): string {
         return `Hello, ${name}!`;
     }
 
-    @update([IDL.Text, IDL.Text], IDL.Null)
-    async handleEvent(chain: string, transactionId: string): Promise<null> {
+    @update([IDL.Nat32, IDL.Text], IDL.Null)
+    async handleEvent(chain: Chain, transactionId: string): Promise<null> {
         try {
+            // Validate chain ID
+            if (!isValidChain(chain)) {
+                console.error(`Invalid chain ID: ${chain}`);
+                return null;
+            }
             await processEvent(chain, transactionId);
         } catch (error: any) {
             console.error(`Error processing event: ${error}`);
@@ -68,7 +102,6 @@ export default class {
         contracts: IDL.Record({
             'Base Mainnet': IDL.Vec(IDL.Text),
             'WorldChain': IDL.Vec(IDL.Text),
-            'Monad': IDL.Vec(IDL.Text),
         }),
         eventSignatures: IDL.Record({
             'VerifyFarcasterRequested': IDL.Text,

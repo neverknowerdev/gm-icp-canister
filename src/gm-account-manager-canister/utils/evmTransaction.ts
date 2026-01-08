@@ -3,12 +3,12 @@
  * Handles transaction signing and sending
  */
 
-import { call, IDL, Principal } from 'azle';
+import { call, IDL } from 'azle';
 import { keccak256 } from './keccak256';
 import { signWithThresholdEcdsa } from './thresholdSigning';
 import { fetchTransactionReceipt } from './evmRpc';
-
-const EVM_RPC_CANISTER_ID = Principal.fromText('7hfb6-caaaa-aaaar-qadga-cai');
+import { Chain } from './types';
+import { EVM_RPC_CANISTER_ID, getRpcServices, RpcServices, RpcConfig, createDefaultRpcConfig } from './evmRpc';
 
 // Nonce cache for transactions
 const nonceCache = new Map<number, number>();
@@ -35,17 +35,17 @@ function rlpEncodeNumber(value: number | bigint): Uint8Array {
     if (value === 0) {
         return new Uint8Array([0x80]);
     }
-    
+
     const hex = value.toString(16);
     const bytes = new Uint8Array(Math.ceil(hex.length / 2));
     for (let i = 0; i < hex.length; i += 2) {
         bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
     }
-    
+
     if (bytes.length === 1 && bytes[0] < 0x80) {
         return bytes;
     }
-    
+
     return new Uint8Array([0x80 + bytes.length, ...bytes]);
 }
 
@@ -56,11 +56,11 @@ function rlpEncodeBytes(data: Uint8Array): Uint8Array {
     if (data.length === 1 && data[0] < 0x80) {
         return data;
     }
-    
+
     if (data.length < 56) {
         return new Uint8Array([0x80 + data.length, ...data]);
     }
-    
+
     const lengthBytes = rlpEncodeNumber(data.length);
     return new Uint8Array([0xb7 + lengthBytes.length, ...lengthBytes, ...data]);
 }
@@ -97,7 +97,7 @@ function serializeUnsignedTransaction(tx: {
     chainId: number;
 }): Uint8Array {
     const toBytes = hexToBytes(tx.to);
-    
+
     const txArray = [
         rlpEncodeNumber(tx.nonce),
         rlpEncodeNumber(tx.gasPrice),
@@ -109,15 +109,15 @@ function serializeUnsignedTransaction(tx: {
         new Uint8Array([0x80]), // r (empty)
         new Uint8Array([0x80]), // s (empty)
     ];
-    
+
     const totalLength = txArray.reduce((sum, item) => sum + item.length, 0);
-    const prefix = totalLength < 56 
+    const prefix = totalLength < 56
         ? new Uint8Array([0xf8 + totalLength])
         : (() => {
             const lengthBytes = rlpEncodeNumber(totalLength);
             return new Uint8Array([0xf7 + lengthBytes.length, ...lengthBytes]);
         })();
-    
+
     const result = new Uint8Array(prefix.length + totalLength);
     let offset = 0;
     result.set(prefix, offset);
@@ -126,7 +126,7 @@ function serializeUnsignedTransaction(tx: {
         result.set(item, offset);
         offset += item.length;
     }
-    
+
     return result;
 }
 
@@ -145,7 +145,7 @@ function serializeSignedTransaction(tx: {
     s: Uint8Array;
 }): Uint8Array {
     const toBytes = hexToBytes(tx.to);
-    
+
     const txArray = [
         rlpEncodeNumber(tx.nonce),
         rlpEncodeNumber(tx.gasPrice),
@@ -157,15 +157,15 @@ function serializeSignedTransaction(tx: {
         rlpEncodeBytes(tx.r),
         rlpEncodeBytes(tx.s),
     ];
-    
+
     const totalLength = txArray.reduce((sum, item) => sum + item.length, 0);
-    const prefix = totalLength < 56 
+    const prefix = totalLength < 56
         ? new Uint8Array([0xf8 + totalLength])
         : (() => {
             const lengthBytes = rlpEncodeNumber(totalLength);
             return new Uint8Array([0xf7 + lengthBytes.length, ...lengthBytes]);
         })();
-    
+
     const result = new Uint8Array(prefix.length + totalLength);
     let offset = 0;
     result.set(prefix, offset);
@@ -174,24 +174,8 @@ function serializeSignedTransaction(tx: {
         result.set(item, offset);
         offset += item.length;
     }
-    
-    return result;
-}
 
-/**
- * Get RPC services variant for chain
- */
-function getRpcServices(chain: string): any {
-    switch (chain) {
-        case 'Base Mainnet':
-            return { BaseMainnet: null };
-        case 'WorldChain':
-            return { WorldChain: null };
-        case 'Monad':
-            return { Monad: null };
-        default:
-            throw new Error(`Unsupported chain: ${chain}`);
-    }
+    return result;
 }
 
 /**
@@ -199,8 +183,7 @@ function getRpcServices(chain: string): any {
  * This function handles transaction serialization and signing internally
  */
 export async function sendSignedTransaction(
-    chain: string,
-    chainId: number,
+    chain: Chain,
     contractAddress: string,
     data: Uint8Array,
     fromAddress: string,
@@ -208,8 +191,8 @@ export async function sendSignedTransaction(
     gasLimit: bigint = 500_000n
 ): Promise<string> {
     try {
-        const nonce = await getNextNonce(chainId, fromAddress);
-        
+        const nonce = await getNextNonce(chain, fromAddress);
+
         // Build unsigned transaction for signing
         const unsignedTx = {
             nonce,
@@ -218,29 +201,29 @@ export async function sendSignedTransaction(
             to: contractAddress,
             value: 0n,
             data,
-            chainId,
+            chainId: chain,
         };
-        
+
         // Serialize unsigned transaction (for EIP-155 signing)
         const txForSigning = serializeUnsignedTransaction(unsignedTx);
-        
+
         // Hash transaction for signing
         const txHash = keccak256(txForSigning);
-        
+
         // Sign transaction hash with threshold ECDSA
         const signature = await signWithThresholdEcdsa(txHash);
-        
+
         // Extract r, s, v from signature
         const r = signature.slice(0, 32);
         const s = signature.slice(32, 64);
         let v = signature.length > 64 ? signature[64] : 27;
-        
+
         // EIP-155: v = chainId * 2 + 35 + (v - 27)
         if (v < 27) {
             v = 27 + (v % 2);
         }
-        v = v - 27 + chainId * 2 + 35;
-        
+        v = v - 27 + chain * 2 + 35;
+
         // Build signed transaction
         const signedTx = {
             nonce,
@@ -253,59 +236,21 @@ export async function sendSignedTransaction(
             r,
             s,
         };
-        
+
         // Serialize signed transaction
         const serializedTx = serializeSignedTransaction(signedTx);
         const txHex = bytesToHex(serializedTx);
-        
+
         // Send via EVM RPC canister
         const rpcServices = getRpcServices(chain);
-        const rpcConfig = {
-            responseSizeEstimate: [1_000_000n],
-            responseConsensus: [],
-        };
-        
+        const rpcConfig = createDefaultRpcConfig(1_000_000n);
+
         const result = await call(EVM_RPC_CANISTER_ID, 'eth_sendRawTransaction', {
             args: [rpcServices, rpcConfig, txHex],
-            paramIdlTypes: [
-                IDL.Variant({
-                    BaseMainnet: IDL.Opt(IDL.Vec(IDL.Variant({
-                        Alchemy: IDL.Null,
-                        Ankr: IDL.Null,
-                        BlockPi: IDL.Null,
-                        PublicNode: IDL.Null,
-                        Llama: IDL.Null,
-                    }))),
-                    WorldChain: IDL.Opt(IDL.Vec(IDL.Variant({
-                        Alchemy: IDL.Null,
-                        Ankr: IDL.Null,
-                        BlockPi: IDL.Null,
-                        PublicNode: IDL.Null,
-                        Llama: IDL.Null,
-                    }))),
-                    Monad: IDL.Opt(IDL.Vec(IDL.Variant({
-                        Alchemy: IDL.Null,
-                        Ankr: IDL.Null,
-                        BlockPi: IDL.Null,
-                        PublicNode: IDL.Null,
-                        Llama: IDL.Null,
-                    }))),
-                }),
-                IDL.Record({
-                    responseSizeEstimate: IDL.Opt(IDL.Nat64),
-                    responseConsensus: IDL.Opt(IDL.Variant({
-                        Equality: IDL.Null,
-                        Threshold: IDL.Record({
-                            total: IDL.Opt(IDL.Nat8),
-                            min: IDL.Nat8,
-                        }),
-                    })),
-                }),
-                IDL.Text,
-            ],
+            paramIdlTypes: [RpcServices, RpcConfig, IDL.Text],
             returnIdlType: IDL.Text, // Transaction hash
         });
-        
+
         console.log(`Transaction sent successfully, hash: ${result}`);
         return result;
     } catch (error: any) {
@@ -318,16 +263,16 @@ export async function sendSignedTransaction(
  * Wait for transaction receipt
  */
 export async function waitForTransaction(
-    chain: string,
+    chain: Chain,
     txHash: string,
     maxWaitTime: number = 300_000
 ): Promise<boolean> {
     const startTime = Date.now();
     const pollInterval = 5_000;
-    
+
     while (Date.now() - startTime < maxWaitTime) {
         const receipt = await fetchTransactionReceipt(chain, txHash);
-        
+
         if (receipt) {
             if (receipt.status === 1n || receipt.status === undefined) {
                 return true;
@@ -336,10 +281,10 @@ export async function waitForTransaction(
                 return false;
             }
         }
-        
+
         // Wait before next poll
         await new Promise(resolve => setTimeout(resolve, pollInterval));
     }
-    
+
     throw new Error(`Transaction ${txHash} not confirmed within ${maxWaitTime}ms`);
 }

@@ -2,7 +2,7 @@ import { processEvent } from '../src/gm-account-manager-canister/eventProcessor'
 import * as evmRpc from '../src/gm-account-manager-canister/utils/evmRpc';
 import * as eventParser from '../src/gm-account-manager-canister/utils/eventParser';
 import * as config from '../src/gm-account-manager-canister/utils/config';
-import { TransactionReceipt, ParsedEvent } from '../src/gm-account-manager-canister/utils/types';
+import { TransactionReceipt, ParsedEvent, CHAIN_BASE_MAINNET } from '../src/gm-account-manager-canister/utils/types';
 import * as verifyTwitter from '../src/gm-account-manager-canister/events/verifyTwitter';
 import * as verifyFarcaster from '../src/gm-account-manager-canister/events/verifyFarcaster';
 import * as transactionTracker from '../src/gm-account-manager-canister/storage/transactionTracker';
@@ -38,7 +38,7 @@ describe('Event Processor', () => {
         jest.clearAllMocks();
         // Mock transaction tracker - transactions are not processed by default
         (transactionTracker.isTransactionProcessed as jest.Mock).mockReturnValue(false);
-        (transactionTracker.markTransactionProcessed as jest.Mock).mockImplementation(() => {});
+        (transactionTracker.markTransactionProcessed as jest.Mock).mockImplementation(() => { });
     });
 
     it('should process event successfully', async () => {
@@ -57,16 +57,17 @@ describe('Event Processor', () => {
         (evmRpc.fetchTransactionReceipt as jest.Mock).mockResolvedValue(mockReceipt);
         (eventParser.extractEvents as jest.Mock).mockReturnValue(mockEvents);
 
-        await processEvent('Base Mainnet', '0xtxhash');
+        await processEvent(CHAIN_BASE_MAINNET, '0xtxhash');
 
-        expect(evmRpc.fetchTransactionReceipt).toHaveBeenCalledWith('Base Mainnet', '0xtxhash');
+        expect(evmRpc.fetchTransactionReceipt).toHaveBeenCalledWith(CHAIN_BASE_MAINNET, '0xtxhash');
         expect(eventParser.extractEvents).toHaveBeenCalledWith([], ['0xContract']);
+        expect(transactionTracker.markTransactionProcessed).toHaveBeenCalledWith(CHAIN_BASE_MAINNET, '0xtxhash', 1000);
     });
 
     it('should return early if no contracts configured', async () => {
         (config.getContractAddresses as jest.Mock).mockReturnValue([]);
 
-        await processEvent('Base Mainnet', '0xtxhash');
+        await processEvent(CHAIN_BASE_MAINNET, '0xtxhash');
 
         expect(evmRpc.fetchTransactionReceipt).not.toHaveBeenCalled();
     });
@@ -75,7 +76,7 @@ describe('Event Processor', () => {
         (config.getContractAddresses as jest.Mock).mockReturnValue(['0xContract']);
         (evmRpc.fetchTransactionReceipt as jest.Mock).mockResolvedValue(null);
 
-        await processEvent('Base Mainnet', '0xtxhash');
+        await processEvent(CHAIN_BASE_MAINNET, '0xtxhash');
 
         expect(eventParser.extractEvents).not.toHaveBeenCalled();
     });
@@ -86,7 +87,7 @@ describe('Event Processor', () => {
         (config.getContractAddresses as jest.Mock).mockReturnValue(['0xContract']);
         (evmRpc.fetchTransactionReceipt as jest.Mock).mockResolvedValue(failedReceipt);
 
-        await processEvent('Base Mainnet', '0xtxhash');
+        await processEvent(CHAIN_BASE_MAINNET, '0xtxhash');
 
         expect(eventParser.extractEvents).not.toHaveBeenCalled();
     });
@@ -97,7 +98,7 @@ describe('Event Processor', () => {
         (config.getContractAddresses as jest.Mock).mockReturnValue(['0xContract']);
         (evmRpc.fetchTransactionReceipt as jest.Mock).mockResolvedValue(receipt);
 
-        await processEvent('Base Mainnet', '0xtxhash');
+        await processEvent(CHAIN_BASE_MAINNET, '0xtxhash');
 
         expect(eventParser.extractEvents).not.toHaveBeenCalled();
     });
@@ -109,7 +110,7 @@ describe('Event Processor', () => {
         (evmRpc.fetchTransactionReceipt as jest.Mock).mockResolvedValue(receipt);
         (eventParser.extractEvents as jest.Mock).mockReturnValue([]);
 
-        await processEvent('Base Mainnet', '0xtxhash');
+        await processEvent(CHAIN_BASE_MAINNET, '0xtxhash');
 
         expect(eventParser.extractEvents).toHaveBeenCalledWith([], ['0xContract']);
     });
@@ -119,10 +120,10 @@ describe('Event Processor', () => {
         (evmRpc.fetchTransactionReceipt as jest.Mock).mockResolvedValue(mockReceipt);
         (eventParser.extractEvents as jest.Mock).mockReturnValue([]);
 
-        await processEvent('Base Mainnet', '0xtxhash');
+        await processEvent(CHAIN_BASE_MAINNET, '0xtxhash');
 
         expect(eventParser.extractEvents).toHaveBeenCalledWith([], ['0xContract']);
-        expect(transactionTracker.markTransactionProcessed).toHaveBeenCalledWith('0xtxhash');
+        expect(transactionTracker.markTransactionProcessed).toHaveBeenCalledWith(CHAIN_BASE_MAINNET, '0xtxhash', 1000);
     });
 
     it('should ignore events without handlers', async () => {
@@ -141,7 +142,7 @@ describe('Event Processor', () => {
         (evmRpc.fetchTransactionReceipt as jest.Mock).mockResolvedValue(mockReceipt);
         (eventParser.extractEvents as jest.Mock).mockReturnValue(mockEvents);
 
-        await processEvent('Base Mainnet', '0xtxhash');
+        await processEvent(CHAIN_BASE_MAINNET, '0xtxhash');
 
         // Should complete without errors
         expect(eventParser.extractEvents).toHaveBeenCalledWith([], ['0xContract']);
@@ -169,11 +170,11 @@ describe('Event Processor', () => {
         );
 
         // Should not throw, just log error
-        await expect(processEvent('Base Mainnet', '0xtxhash')).resolves.not.toThrow();
+        await expect(processEvent(CHAIN_BASE_MAINNET, '0xtxhash')).resolves.not.toThrow();
     });
 
     it('should handle transaction with undefined status', async () => {
-        const receiptWithoutStatus: TransactionReceipt = { 
+        const receiptWithoutStatus: TransactionReceipt = {
             ...mockReceipt,
             status: undefined as any
         };
@@ -182,7 +183,7 @@ describe('Event Processor', () => {
         (evmRpc.fetchTransactionReceipt as jest.Mock).mockResolvedValue(receiptWithoutStatus);
         (eventParser.extractEvents as jest.Mock).mockReturnValue([]);
 
-        await processEvent('Base Mainnet', '0xtxhash');
+        await processEvent(CHAIN_BASE_MAINNET, '0xtxhash');
 
         expect(eventParser.extractEvents).toHaveBeenCalledWith([], ['0xContract']);
     });
@@ -213,16 +214,16 @@ describe('Event Processor', () => {
         (verifyTwitter.verifyTwitter as jest.Mock).mockResolvedValue(undefined);
         (verifyFarcaster.verifyFarcaster as jest.Mock).mockResolvedValue(undefined);
 
-        await processEvent('Base Mainnet', '0xtxhash');
+        await processEvent(CHAIN_BASE_MAINNET, '0xtxhash');
 
         expect(verifyTwitter.verifyTwitter).toHaveBeenCalledWith(
             mockEvents[0],
-            'Base Mainnet',
+            CHAIN_BASE_MAINNET,
             '0xfrom'
         );
         expect(verifyFarcaster.verifyFarcaster).toHaveBeenCalledWith(
             mockEvents[1],
-            'Base Mainnet',
+            CHAIN_BASE_MAINNET,
             '0xfrom'
         );
     });
@@ -234,7 +235,7 @@ describe('Event Processor', () => {
         (config.getContractAddresses as jest.Mock).mockReturnValue(['0xContract']);
         (evmRpc.fetchTransactionReceipt as jest.Mock).mockResolvedValue(receiptWithoutTo);
 
-        await processEvent('Base Mainnet', '0xtxhash');
+        await processEvent(CHAIN_BASE_MAINNET, '0xtxhash');
 
         expect(eventParser.extractEvents).not.toHaveBeenCalled();
     });

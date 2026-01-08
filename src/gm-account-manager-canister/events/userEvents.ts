@@ -1,7 +1,7 @@
 // Event Handlers for User-related events from smart contract
 // These events are processed AFTER the transaction that calls createOrUpdateUser
 
-import { ParsedEvent } from '../utils/types';
+import { ParsedEvent, Chain } from '../utils/types';
 import {
     getUser,
     createUserWithId,
@@ -20,7 +20,7 @@ import { topicToUint256, topicToAddress, parseEventData } from '../utils/eventUt
  * Topics: [eventSignature, userId, wallet]
  * Data: [twitterId (32 bytes), farcasterId (32 bytes)]
  */
-export async function handleUserCreated(event: ParsedEvent, chain: string): Promise<void> {
+export async function handleUserCreated(event: ParsedEvent, chain: Chain): Promise<void> {
     console.log(`Processing UserCreated event`);
     
     // Extract indexed parameters from topics
@@ -62,7 +62,7 @@ export async function handleUserCreated(event: ParsedEvent, chain: string): Prom
  * Event: UserRemoved(uint256 indexed userId)
  * Topics: [eventSignature, userId]
  */
-export async function handleUserRemoved(event: ParsedEvent, chain: string): Promise<void> {
+export async function handleUserRemoved(event: ParsedEvent, chain: Chain): Promise<void> {
     console.log(`Processing UserRemoved event`);
     
     const userId = event.args.topic1 ? topicToUint256(event.args.topic1) : null;
@@ -82,7 +82,7 @@ export async function handleUserRemoved(event: ParsedEvent, chain: string): Prom
  * Topics: [eventSignature, userId, keccak256(socialType), socialId]
  * socialType: "twitter" or "farcaster" (keccak256 hashed in topic)
  */
-export async function handleSocialAccountLinked(event: ParsedEvent, chain: string): Promise<void> {
+export async function handleSocialAccountLinked(event: ParsedEvent, chain: Chain): Promise<void> {
     console.log(`Processing SocialAccountLinked event`);
     
     const userId = event.args.topic1 ? topicToUint256(event.args.topic1) : null;
@@ -156,7 +156,7 @@ export async function handleSocialAccountLinked(event: ParsedEvent, chain: strin
  * Event: PrimaryWalletUpdated(uint256 indexed userId, address indexed wallet)
  * Topics: [eventSignature, userId, wallet]
  */
-export async function handlePrimaryWalletUpdated(event: ParsedEvent, chain: string): Promise<void> {
+export async function handlePrimaryWalletUpdated(event: ParsedEvent, chain: Chain): Promise<void> {
     console.log(`Processing PrimaryWalletUpdated event`);
     
     const userId = event.args.topic1 ? topicToUint256(event.args.topic1) : null;
@@ -177,7 +177,7 @@ export async function handlePrimaryWalletUpdated(event: ParsedEvent, chain: stri
  * Topics: [eventSignature, userId, wallet]
  * Data: [chain (string)]
  */
-export async function handleWalletLinked(event: ParsedEvent, chain: string): Promise<void> {
+export async function handleWalletLinked(event: ParsedEvent, chain: Chain): Promise<void> {
     console.log(`Processing WalletLinked event`);
     
     const userId = event.args.topic1 ? topicToUint256(event.args.topic1) : null;
@@ -206,7 +206,7 @@ export async function handleWalletLinked(event: ParsedEvent, chain: string): Pro
  * Topics: [eventSignature, userId]
  * Data: [isVerified (bool, 32 bytes)]
  */
-export async function handleHumanVerificationUpdated(event: ParsedEvent, chain: string): Promise<void> {
+export async function handleHumanVerificationUpdated(event: ParsedEvent, chain: Chain): Promise<void> {
     console.log(`Processing HumanVerificationUpdated event`);
     
     const userId = event.args.topic1 ? topicToUint256(event.args.topic1) : null;
@@ -243,7 +243,7 @@ export async function handleHumanVerificationUpdated(event: ParsedEvent, chain: 
 /**
  * Route event to appropriate handler
  */
-export async function processUserEvent(event: ParsedEvent, chain: string): Promise<void> {
+export async function processUserEvent(event: ParsedEvent, chain: Chain): Promise<void> {
     const eventName = event.eventName;
 
     switch (eventName) {

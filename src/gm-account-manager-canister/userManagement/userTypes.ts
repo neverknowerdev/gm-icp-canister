@@ -1,19 +1,21 @@
 // User data model
 
+import { Chain } from '../utils/types';
+
 export interface Wallet {
     wallet: string; // Address
-    chain: string;
+    chain: Chain;
 }
 
 export interface User {
     userId: bigint;
-    chains: string[];
+    chains: Chain[];
     twitterId: bigint;
     farcasterId: bigint;
     isVerified: boolean;
     verifications: string[];
     primaryWallet: string;
-    primaryChain: string;
+    primaryChain: Chain;
     wallets: Wallet[];
 }
 

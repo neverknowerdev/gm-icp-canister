@@ -1,94 +1,27 @@
 // Transaction Scanner - periodically scans for unprocessed transactions
 
-import { call, IDL, Principal } from 'azle';
+import { call, IDL } from 'azle';
 import { processEvent } from '../eventProcessor';
 import { getLastProcessedBlock, updateLastProcessedBlock, getTrackedChains } from '../storage/blockTracker';
 import { getContractAddresses } from '../utils/config';
 import { isTransactionProcessed } from '../storage/transactionTracker';
+import { Chain, CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN, chainName } from '../utils/types';
+import { EVM_RPC_CANISTER_ID, RpcServices, RpcConfig, getRpcServices, createDefaultRpcConfig } from '../utils/evmRpc';
 
-const EVM_RPC_CANISTER_ID = Principal.fromText('7hfb6-caaaa-aaaar-qadga-cai');
-
-// IDL types for EVM RPC canister
-const L2MainnetService = IDL.Variant({
-    Alchemy: IDL.Null,
-    Ankr: IDL.Null,
-    BlockPi: IDL.Null,
-    PublicNode: IDL.Null,
-    Llama: IDL.Null,
-});
-
-const RpcServices = IDL.Variant({
-    BaseMainnet: IDL.Opt(IDL.Vec(L2MainnetService)),
-    WorldChain: IDL.Opt(IDL.Vec(L2MainnetService)),
-    Monad: IDL.Opt(IDL.Vec(L2MainnetService)),
-});
-
-const RpcConfig = IDL.Record({
-    responseSizeEstimate: IDL.Opt(IDL.Nat64),
-    responseConsensus: IDL.Opt(IDL.Variant({
-        Equality: IDL.Null,
-        Threshold: IDL.Record({
-            total: IDL.Opt(IDL.Nat8),
-            min: IDL.Nat8,
-        }),
-    })),
-});
-
-function getRpcServices(chain: string): any {
-    switch (chain) {
-        case 'Base Mainnet':
-            return { BaseMainnet: null };
-        case 'WorldChain':
-            return { WorldChain: null };
-        case 'Monad':
-            return { Monad: null };
-        default:
-            throw new Error(`Unsupported chain: ${chain}`);
-    }
-}
-
-/**
- * Get current block number for a chain
- */
-async function getCurrentBlockNumber(chain: string): Promise<number | null> {
-    try {
-        const rpcServices = getRpcServices(chain);
-        const rpcConfig = {
-            responseSizeEstimate: [1_000_000n],
-            responseConsensus: [],
-        };
-
-        const result = await call(EVM_RPC_CANISTER_ID, 'eth_blockNumber', {
-            args: [rpcServices, rpcConfig],
-            paramIdlTypes: [RpcServices, RpcConfig],
-            returnIdlType: IDL.Text, // Returns hex string
-        });
-
-        // Convert hex to number
-        const blockNumber = parseInt(result, 16);
-        return blockNumber;
-    } catch (error: any) {
-        console.error(`Error getting current block number for ${chain}: ${error}`);
-        return null;
-    }
-}
 
 /**
  * Get logs for a range of blocks using eth_getLogs
  * This is more efficient than scanning individual blocks
  */
 async function getLogsForBlocks(
-    chain: string,
+    chain: Chain,
     fromBlock: number,
     toBlock: number,
     contractAddresses: string[]
 ): Promise<Array<{ transactionHash: string }>> {
     try {
         const rpcServices = getRpcServices(chain);
-        const rpcConfig = {
-            responseSizeEstimate: [10_000_000n], // Increased for potentially many logs
-            responseConsensus: [],
-        };
+        const rpcConfig = createDefaultRpcConfig(10_000_000n); // Increased for potentially many logs
 
         const fromBlockHex = '0x' + fromBlock.toString(16);
         const toBlockHex = '0x' + toBlock.toString(16);
@@ -132,7 +65,7 @@ async function getLogsForBlocks(
 
         return Array.from(txHashes).map(hash => ({ transactionHash: hash }));
     } catch (error: any) {
-        console.error(`Error getting logs for blocks ${fromBlock}-${toBlock} on ${chain}: ${error}`);
+        console.error(`Error getting logs for blocks ${fromBlock}-${toBlock} on ${chainName(chain)} (${chain}): ${error}`);
         return [];
     }
 }
@@ -140,24 +73,10 @@ async function getLogsForBlocks(
 /**
  * Scan chain for unprocessed transactions since last check
  */
-async function scanChainForTransactions(chain: string): Promise<void> {
-    console.log(`Scanning ${chain} for unprocessed transactions...`);
+async function scanChainForTransactions(chain: Chain): Promise<void> {
+    console.log(`Scanning ${chainName(chain)} (${chain}) for unprocessed transactions...`);
 
     const lastBlock = getLastProcessedBlock(chain);
-    const currentBlock = await getCurrentBlockNumber(chain);
-
-    if (!currentBlock) {
-        console.error(`Failed to get current block number for ${chain}`);
-        return;
-    }
-
-    if (currentBlock <= lastBlock) {
-        console.log(`No new blocks on ${chain} (last: ${lastBlock}, current: ${currentBlock})`);
-        updateLastProcessedBlock(chain, currentBlock);
-        return;
-    }
-
-    console.log(`Scanning blocks ${lastBlock + 1} to ${currentBlock} on ${chain}`);
 
     // Get contract addresses for this chain
     const contractAddresses = getContractAddresses(chain);
@@ -167,8 +86,9 @@ async function scanChainForTransactions(chain: string): Promise<void> {
     }
 
     // Limit the range to avoid too much processing at once
+    // Scan a fixed window ahead from last processed block
     const maxBlocksToScan = 1000;
-    const endBlock = Math.min(currentBlock, lastBlock + maxBlocksToScan);
+    const endBlock = lastBlock + maxBlocksToScan;
 
     // Use eth_getLogs to get all logs from our contracts in the block range
     const logs = await getLogsForBlocks(chain, lastBlock + 1, endBlock, contractAddresses);
@@ -181,9 +101,9 @@ async function scanChainForTransactions(chain: string): Promise<void> {
 
     for (const log of logs) {
         const txHash = log.transactionHash;
-        
-        // Check if already processed
-        if (isTransactionProcessed(txHash)) {
+
+        // Check if already processed on this chain
+        if (isTransactionProcessed(chain, txHash)) {
             skippedCount++;
             continue;
         }
@@ -199,7 +119,7 @@ async function scanChainForTransactions(chain: string): Promise<void> {
 
     // Update last processed block
     updateLastProcessedBlock(chain, endBlock);
-    console.log(`Completed scanning ${chain}: processed ${processedCount} transactions, skipped ${skippedCount} already processed, up to block ${endBlock}`);
+    console.log(`Completed scanning ${chainName(chain)} (${chain}): processed ${processedCount} transactions, skipped ${skippedCount} already processed, up to block ${endBlock}`);
 }
 
 /**
@@ -210,22 +130,17 @@ export async function scanAllChains(): Promise<void> {
 
     // Get all chains from config
     const chains = getTrackedChains();
-    
+
     // If no chains tracked yet, initialize from config
-    const defaultChains = ['Base Mainnet', 'WorldChain', 'Monad'];
+    const defaultChains: Chain[] = [CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN];
     const chainsToScan = chains.length > 0 ? chains : defaultChains;
 
     for (const chain of chainsToScan) {
         const contracts = getContractAddresses(chain);
         if (contracts.length > 0) {
-            // Initialize block tracking if not exists
+            // If no blocks tracked yet, start from block 0 (will be updated as transactions are processed)
             if (getLastProcessedBlock(chain) === 0) {
-                const currentBlock = await getCurrentBlockNumber(chain);
-                if (currentBlock) {
-                    updateLastProcessedBlock(chain, currentBlock);
-                    console.log(`Initialized block tracking for ${chain} at block ${currentBlock}`);
-                    continue; // Skip first scan, start from next block
-                }
+                console.log(`Starting block tracking for ${chainName(chain)} (${chain}) from block 0`);
             }
             await scanChainForTransactions(chain);
         }

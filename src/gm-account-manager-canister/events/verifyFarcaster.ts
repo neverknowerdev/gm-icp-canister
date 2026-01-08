@@ -1,4 +1,4 @@
-import { ParsedEvent } from '../utils/types';
+import { ParsedEvent, Chain } from '../utils/types';
 import {
     getUserByFarcasterId,
 } from '../userManagement/userStore';
@@ -25,7 +25,7 @@ import { verifyFarcasterAuthBigInt } from '../utils/farcasterVerification';
  */
 export async function verifyFarcaster(
     event: ParsedEvent,
-    chain: string,
+    chain: Chain,
     transactionFrom: string
 ): Promise<void> {
     console.log(`Processing VerifyFarcasterRequested event`);
@@ -85,7 +85,7 @@ export async function verifyFarcaster(
     let userId: bigint;
     let twitterIdToSend: bigint = 0n;
     let farcasterIdToSend: bigint = farcasterId;
-    let walletsForChain: Array<{ wallet: string, chain: string }> = [{ wallet, chain }];
+    let walletsForChain: Array<{ wallet: string, chain: Chain }> = [{ wallet, chain }];
 
     if (existingUserByFarcaster) {
         // Farcaster ID already exists - use existing userId

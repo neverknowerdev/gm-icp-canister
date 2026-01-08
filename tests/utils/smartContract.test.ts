@@ -1,5 +1,6 @@
 import { callCreateUser, callAddUser, encodeUserData } from '../../src/gm-account-manager-canister/utils/smartContract';
 import { User } from '../../src/gm-account-manager-canister/userManagement/userTypes';
+import { CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from '../../src/gm-account-manager-canister/utils/types';
 
 // Mock dependencies
 jest.mock('../../src/gm-account-manager-canister/utils/evmTransaction', () => ({
@@ -24,23 +25,23 @@ describe('Smart Contract Utilities', () => {
         it('should encode user data correctly', () => {
             const user: User = {
                 userId: 1n,
-                chains: ['Base Mainnet', 'WorldChain'],
+                chains: [CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN],
                 twitterId: 100n,
                 farcasterId: 200n,
                 isVerified: true,
                 verifications: ['twitter', 'farcaster'],
                 primaryWallet: '0x123',
-                primaryChain: 'Base Mainnet',
+                primaryChain: CHAIN_BASE_MAINNET,
                 wallets: [
-                    { wallet: '0x123', chain: 'Base Mainnet' },
-                    { wallet: '0x456', chain: 'WorldChain' },
+                    { wallet: '0x123', chain: CHAIN_BASE_MAINNET },
+                    { wallet: '0x456', chain: CHAIN_WORLDCHAIN },
                 ],
             };
 
             const encoded = encodeUserData(user);
 
             expect(encoded.userId).toBe(1n);
-            expect(encoded.chains).toEqual(['Base Mainnet', 'WorldChain']);
+            expect(encoded.chains).toEqual([CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN]);
             expect(encoded.twitterId).toBe(100n);
             expect(encoded.farcasterId).toBe(200n);
             expect(encoded.isVerified).toBe(true);
@@ -54,7 +55,7 @@ describe('Smart Contract Utilities', () => {
         it('should call createUser with correct parameters', async () => {
             const result = await callCreateUser(
                 '0xContract',
-                'Base Mainnet',
+                CHAIN_BASE_MAINNET,
                 1n,
                 '0xWallet',
                 100n,
@@ -75,7 +76,7 @@ describe('Smart Contract Utilities', () => {
             // This test verifies that errors don't propagate
             const result = await callCreateUser(
                 '0xContract',
-                'Base Mainnet',
+                CHAIN_BASE_MAINNET,
                 1n,
                 '0xWallet',
                 100n,
@@ -91,17 +92,17 @@ describe('Smart Contract Utilities', () => {
         it('should call addUser with correct parameters', async () => {
             const user: User = {
                 userId: 1n,
-                chains: ['Base Mainnet'],
+                chains: [CHAIN_BASE_MAINNET],
                 twitterId: 100n,
                 farcasterId: 0n,
                 isVerified: false,
                 verifications: [],
                 primaryWallet: '0x123',
-                primaryChain: 'Base Mainnet',
-                wallets: [{ wallet: '0x123', chain: 'Base Mainnet' }],
+                primaryChain: CHAIN_BASE_MAINNET,
+                wallets: [{ wallet: '0x123', chain: CHAIN_BASE_MAINNET }],
             };
 
-            const result = await callAddUser('0xContract', 'Base Mainnet', 1n, user);
+            const result = await callAddUser('0xContract', CHAIN_BASE_MAINNET, 1n, user);
 
             expect(result).toBe(true);
         });
@@ -109,14 +110,14 @@ describe('Smart Contract Utilities', () => {
         it('should handle errors gracefully', async () => {
             const user: User = {
                 userId: 1n,
-                chains: ['Base Mainnet'],
+                chains: [CHAIN_BASE_MAINNET],
                 twitterId: 100n,
                 farcasterId: 0n,
                 isVerified: false,
                 verifications: [],
                 primaryWallet: '0x123',
-                primaryChain: 'Base Mainnet',
-                wallets: [{ wallet: '0x123', chain: 'Base Mainnet' }],
+                primaryChain: CHAIN_BASE_MAINNET,
+                wallets: [{ wallet: '0x123', chain: CHAIN_BASE_MAINNET }],
             };
 
             // The function already has try-catch, so we need to mock console.error
@@ -125,7 +126,7 @@ describe('Smart Contract Utilities', () => {
             // Since callAddUser has try-catch, we can't easily mock it to throw
             // The actual implementation already handles errors internally
             // This test verifies that errors don't propagate
-            const result = await callAddUser('0xContract', 'Base Mainnet', 1n, user);
+            const result = await callAddUser('0xContract', CHAIN_BASE_MAINNET, 1n, user);
 
             expect(result).toBe(true);
             consoleErrorSpy.mockRestore();

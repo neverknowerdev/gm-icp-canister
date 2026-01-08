@@ -1,11 +1,11 @@
 import { call, IDL, Principal } from 'azle';
-import { TransactionReceipt, LogEntry } from './types';
+import { TransactionReceipt, LogEntry, Chain, chainName, CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from './types';
 
 // EVM RPC Canister Principal ID
-const EVM_RPC_CANISTER_ID = Principal.fromText('7hfb6-caaaa-aaaar-qadga-cai');
+export const EVM_RPC_CANISTER_ID = Principal.fromText('7hfb6-caaaa-aaaar-qadga-cai');
 
 // Define IDL types for EVM RPC canister
-const L2MainnetService = IDL.Variant({
+export const L2MainnetService = IDL.Variant({
     Alchemy: IDL.Null,
     Ankr: IDL.Null,
     BlockPi: IDL.Null,
@@ -13,13 +13,12 @@ const L2MainnetService = IDL.Variant({
     Llama: IDL.Null,
 });
 
-const RpcServices = IDL.Variant({
+export const RpcServices = IDL.Variant({
     BaseMainnet: IDL.Opt(IDL.Vec(L2MainnetService)),
     WorldChain: IDL.Opt(IDL.Vec(L2MainnetService)),
-    Monad: IDL.Opt(IDL.Vec(L2MainnetService)),
 });
 
-const RpcConfig = IDL.Record({
+export const RpcConfig = IDL.Record({
     responseSizeEstimate: IDL.Opt(IDL.Nat64),
     responseConsensus: IDL.Opt(IDL.Variant({
         Equality: IDL.Null,
@@ -29,6 +28,30 @@ const RpcConfig = IDL.Record({
         }),
     })),
 });
+
+/**
+ * Maps chain ID to RPC services variant
+ */
+export function getRpcServices(chain: Chain): any {
+    switch (chain) {
+        case CHAIN_BASE_MAINNET:
+            return { BaseMainnet: null };
+        case CHAIN_WORLDCHAIN:
+            return { WorldChain: null };
+        default:
+            throw new Error(`Unsupported chain ID: ${chain}`);
+    }
+}
+
+/**
+ * Create a default RPC config
+ */
+export function createDefaultRpcConfig(responseSizeEstimate: bigint = 1_000_000n): any {
+    return {
+        responseSizeEstimate: [responseSizeEstimate],
+        responseConsensus: [],
+    };
+}
 
 const LogEntryIDL = IDL.Record({
     transactionHash: IDL.Opt(IDL.Text),
@@ -126,7 +149,6 @@ const RpcService = IDL.Variant({
     }),
     BaseMainnet: L2MainnetService,
     WorldChain: L2MainnetService,
-    Monad: L2MainnetService,
 });
 
 const InconsistentEntry = IDL.Record({
@@ -140,33 +162,14 @@ const MultiGetTransactionReceiptResult = IDL.Variant({
 });
 
 /**
- * Maps chain name to RPC services variant
- */
-function getRpcServices(chain: string): any {
-    switch (chain) {
-        case 'Base Mainnet':
-            return { BaseMainnet: null };
-        case 'WorldChain':
-            return { WorldChain: null };
-        case 'Monad':
-            return { Monad: null };
-        default:
-            throw new Error(`Unsupported chain: ${chain}`);
-    }
-}
-
-/**
  * Fetches transaction receipt from EVM RPC canister
  */
 export async function fetchTransactionReceipt(
-    chain: string,
+    chain: Chain,
     transactionId: string
 ): Promise<TransactionReceipt | null> {
     const rpcServices = getRpcServices(chain);
-    const rpcConfig = {
-        responseSizeEstimate: [1_000_000n],
-        responseConsensus: [],
-    };
+    const rpcConfig = createDefaultRpcConfig(1_000_000n);
 
     try {
         const result = await call(EVM_RPC_CANISTER_ID, 'eth_getTransactionReceipt', {

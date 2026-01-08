@@ -1,5 +1,6 @@
 import { StableBTreeMap } from 'azle';
 import { User, UserStore, Wallet } from './userTypes';
+import { Chain } from '../utils/types';
 
 // Initialize stable storage
 const usersStorage = new StableBTreeMap<bigint, User>(0);
@@ -58,7 +59,7 @@ export function getUserByFarcasterId(farcasterId: bigint): User | null {
 /**
  * Get user by wallet address and chain
  */
-export function getUserByWallet(wallet: string, chain: string): User | null {
+export function getUserByWallet(wallet: string, chain: Chain): User | null {
     const key = `${wallet.toLowerCase()}:${chain}`;
     const userIdOpt = walletToUserIdStorage.get(key);
     if (userIdOpt.length === 0) {
@@ -72,7 +73,7 @@ export function getUserByWallet(wallet: string, chain: string): User | null {
  */
 export function createUser(
     wallet: string,
-    chain: string,
+    chain: Chain,
     twitterId: bigint = 0n,
     farcasterId: bigint = 0n
 ): User {
@@ -116,7 +117,7 @@ export function createUser(
 export function createUserWithId(
     userId: bigint,
     wallet: string,
-    chain: string,
+    chain: Chain,
     twitterId: bigint = 0n,
     farcasterId: bigint = 0n
 ): User {
@@ -154,7 +155,7 @@ export function createUserWithId(
 /**
  * Add wallet to existing user
  */
-export function addWalletToUser(userId: bigint, wallet: string, chain: string): boolean {
+export function addWalletToUser(userId: bigint, wallet: string, chain: Chain): boolean {
     const userOpt = usersStorage.get(userId);
     if (userOpt.length === 0) {
         return false;
@@ -264,11 +265,10 @@ export function isFarcasterIdUnique(farcasterId: bigint): boolean {
  * @param startIndex Starting index for pagination
  * @param limit Number of users to fetch
  */
-export function getTwitterUsers(chainId: number, startIndex: bigint, limit: bigint): Array<{ userId: bigint, accountId: bigint, walletAddress: string }> {
+export function getTwitterUsers(chainId: Chain, startIndex: bigint, limit: bigint): Array<{ userId: bigint, accountId: bigint, walletAddress: string }> {
     const result: Array<{ userId: bigint, accountId: bigint, walletAddress: string }> = [];
     const maxUserId = getNextUserId();
     let currentIndex = 0n;
-    const chainIdStr = chainId.toString();
 
     // Iterate through all user IDs starting from 1
     for (let userId = 1n; userId < maxUserId; userId++) {
@@ -276,7 +276,7 @@ export function getTwitterUsers(chainId: number, startIndex: bigint, limit: bigi
         if (userOpt.length > 0) {
             const user = userOpt[0];
             // Only include users with Twitter ID and matching primaryChain
-            if (user.twitterId > 0n && user.primaryChain === chainIdStr) {
+            if (user.twitterId > 0n && user.primaryChain === chainId) {
                 if (currentIndex >= startIndex && result.length < Number(limit)) {
                     // Use primaryWallet for users with matching primaryChain
                     if (user.primaryWallet) {
@@ -306,11 +306,10 @@ export function getTwitterUsers(chainId: number, startIndex: bigint, limit: bigi
  * @param startIndex Starting index for pagination
  * @param limit Number of users to fetch
  */
-export function getFarcasterUsers(chainId: number, startIndex: bigint, limit: bigint): Array<{ userId: bigint, accountId: bigint, walletAddress: string }> {
+export function getFarcasterUsers(chainId: Chain, startIndex: bigint, limit: bigint): Array<{ userId: bigint, accountId: bigint, walletAddress: string }> {
     const result: Array<{ userId: bigint, accountId: bigint, walletAddress: string }> = [];
     const maxUserId = getNextUserId();
     let currentIndex = 0n;
-    const chainIdStr = chainId.toString();
 
     // Iterate through all user IDs starting from 1
     for (let userId = 1n; userId < maxUserId; userId++) {
@@ -318,7 +317,7 @@ export function getFarcasterUsers(chainId: number, startIndex: bigint, limit: bi
         if (userOpt.length > 0) {
             const user = userOpt[0];
             // Only include users with Farcaster ID and matching primaryChain
-            if (user.farcasterId > 0n && user.primaryChain === chainIdStr) {
+            if (user.farcasterId > 0n && user.primaryChain === chainId) {
                 if (currentIndex >= startIndex && result.length < Number(limit)) {
                     // Use primaryWallet for users with matching primaryChain
                     if (user.primaryWallet) {
