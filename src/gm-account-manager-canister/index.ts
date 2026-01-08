@@ -5,6 +5,8 @@ import { getUser, getUserByTwitterId, getUserByFarcasterId, getTwitterUsers as g
 import { getEthereumAddress } from './utils/thresholdSigning';
 import { initializeScanner, scheduleScanner } from './scanner/scannerScheduler';
 import { scanAllChains } from './scanner/transactionScanner';
+import { initTwitterConfig } from './utils/twitterVerification';
+import { initFarcasterConfig } from './utils/farcasterVerification';
 
 interface Config {
     contracts: {
@@ -82,6 +84,33 @@ export default class {
     setConfig(config: Config): null {
         initConfig(config);
         console.log('Configuration updated successfully');
+        return null;
+    }
+
+    /**
+     * Initialize Twitter API configuration for verification
+     */
+    @update([IDL.Record({
+        clientId: IDL.Text,
+        clientSecret: IDL.Text,
+        redirectUri: IDL.Text,
+    })], IDL.Null)
+    setTwitterConfig(config: { clientId: string; clientSecret: string; redirectUri: string }): null {
+        initTwitterConfig(config);
+        console.log('Twitter API configuration updated successfully');
+        return null;
+    }
+
+    /**
+     * Initialize Farcaster API configuration for verification
+     */
+    @update([IDL.Record({
+        apiKey: IDL.Opt(IDL.Text),
+        apiUrl: IDL.Opt(IDL.Text),
+    })], IDL.Null)
+    setFarcasterConfig(config: { apiKey?: string; apiUrl?: string }): null {
+        initFarcasterConfig(config);
+        console.log('Farcaster API configuration updated successfully');
         return null;
     }
 

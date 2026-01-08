@@ -10,6 +10,7 @@ import { fetchTransactionReceipt } from '../utils/evmRpc';
 import { extractEvents } from '../utils/eventParser';
 import { getContractAddresses } from '../utils/config';
 import { processUserEvent } from './userEvents';
+import { verifyTwitterAuthCodeBigInt } from '../utils/twitterVerification';
 
 /**
  * Handles VerifyTwitterByAuthCodeRequested event
@@ -31,12 +32,49 @@ export async function verifyTwitter(
     console.log(`Processing VerifyTwitterByAuthCodeRequested event`);
     console.log(`Event args: ${JSON.stringify(event.args)}`);
 
-    // Extract Twitter ID and wallet from event
+    // Extract auth code and wallet from event
     const wallet = transactionFrom.toLowerCase(); // Use transaction from address as wallet
-    const twitterId = event.args.topic1 ? BigInt(event.args.topic1) : 0n;
+    
+    // Extract auth code from event data (decoded string from ABI-encoded data)
+    const authCode = event.args.authCode || event.args.data;
+    
+    if (!authCode || authCode === '0x' || (typeof authCode === 'string' && authCode.startsWith('0x') && authCode.length < 10)) {
+        console.error('No auth code found in event. Event must contain Twitter OAuth auth code.');
+        return;
+    }
 
-    if (twitterId === 0n) {
-        console.error('Invalid Twitter ID in event');
+    // Clean auth code - remove 0x prefix if present and any padding
+    let cleanAuthCode = typeof authCode === 'string' ? authCode : '';
+    if (cleanAuthCode.startsWith('0x')) {
+        cleanAuthCode = cleanAuthCode.slice(2);
+    }
+    
+    // If it's still hex-encoded, try to decode as string
+    // Otherwise, assume it's already a plain string
+    let authCodeString = cleanAuthCode;
+    try {
+        // Try to decode as hex if it looks like hex
+        if (/^[0-9a-fA-F]+$/.test(cleanAuthCode) && cleanAuthCode.length > 2) {
+            // Might be hex-encoded string, but for OAuth codes, it's likely already a string
+            // OAuth codes are usually alphanumeric strings, not hex
+            // So if it looks like hex but we have authCode from parsing, use that
+            if (event.args.authCode && typeof event.args.authCode === 'string') {
+                authCodeString = event.args.authCode;
+            }
+        }
+    } catch (e) {
+        // If decoding fails, use as-is
+    }
+
+    console.log(`Verifying Twitter auth code...`);
+
+    // Verify auth code with Twitter API and get Twitter ID
+    let twitterId: bigint;
+    try {
+        twitterId = await verifyTwitterAuthCodeBigInt(authCodeString);
+        console.log(`Successfully verified Twitter auth code, Twitter ID: ${twitterId}`);
+    } catch (error: any) {
+        console.error(`Failed to verify Twitter auth code: ${error.message}`);
         return;
     }
 

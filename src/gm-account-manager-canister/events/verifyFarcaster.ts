@@ -9,6 +9,7 @@ import { fetchTransactionReceipt } from '../utils/evmRpc';
 import { extractEvents } from '../utils/eventParser';
 import { getContractAddresses } from '../utils/config';
 import { processUserEvent } from './userEvents';
+import { verifyFarcasterAuthBigInt } from '../utils/farcasterVerification';
 
 /**
  * Handles VerifyFarcasterRequested event
@@ -30,12 +31,38 @@ export async function verifyFarcaster(
     console.log(`Processing VerifyFarcasterRequested event`);
     console.log(`Event args: ${JSON.stringify(event.args)}`);
 
-    // Extract Farcaster ID and wallet from event
+    // Extract auth token and wallet from event
     const wallet = transactionFrom.toLowerCase(); // Use transaction from address as wallet
-    const farcasterId = event.args.topic1 ? BigInt(event.args.topic1) : 0n;
+    
+    // Extract auth token from event data (decoded string from ABI-encoded data)
+    const authToken = event.args.authToken || event.args.authCode || event.args.data;
+    
+    if (!authToken || authToken === '0x' || (typeof authToken === 'string' && authToken.startsWith('0x') && authToken.length < 10)) {
+        console.error('No auth token found in event. Event must contain Farcaster auth token.');
+        return;
+    }
 
-    if (farcasterId === 0n) {
-        console.error('Invalid Farcaster ID in event');
+    // Clean auth token - remove 0x prefix if present
+    let cleanAuthToken = typeof authToken === 'string' ? authToken : '';
+    if (cleanAuthToken.startsWith('0x')) {
+        cleanAuthToken = cleanAuthToken.slice(2);
+    }
+    
+    // If we have a decoded string from parsing, use that
+    let authTokenString = cleanAuthToken;
+    if (event.args.authToken && typeof event.args.authToken === 'string') {
+        authTokenString = event.args.authToken;
+    }
+
+    console.log(`Verifying Farcaster auth token...`);
+
+    // Verify auth token with Farcaster API and get Farcaster ID
+    let farcasterId: bigint;
+    try {
+        farcasterId = await verifyFarcasterAuthBigInt(authTokenString);
+        console.log(`Successfully verified Farcaster auth token, Farcaster ID (FID): ${farcasterId}`);
+    } catch (error: any) {
+        console.error(`Failed to verify Farcaster auth token: ${error.message}`);
         return;
     }
 

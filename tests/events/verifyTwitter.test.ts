@@ -7,6 +7,7 @@ import * as atomicCounter from '../../src/gm-account-manager-canister/storage/at
 import * as evmRpc from '../../src/gm-account-manager-canister/utils/evmRpc';
 import * as eventParser from '../../src/gm-account-manager-canister/utils/eventParser';
 import * as userEvents from '../../src/gm-account-manager-canister/events/userEvents';
+import * as twitterVerification from '../../src/gm-account-manager-canister/utils/twitterVerification';
 
 // Mock dependencies
 jest.mock('../../src/gm-account-manager-canister/userManagement/userStore');
@@ -16,13 +17,14 @@ jest.mock('../../src/gm-account-manager-canister/storage/atomicCounter');
 jest.mock('../../src/gm-account-manager-canister/utils/evmRpc');
 jest.mock('../../src/gm-account-manager-canister/utils/eventParser');
 jest.mock('../../src/gm-account-manager-canister/events/userEvents');
+jest.mock('../../src/gm-account-manager-canister/utils/twitterVerification');
 
 describe('verifyTwitter Handler', () => {
     const mockEvent: ParsedEvent = {
         eventName: 'VerifyTwitterByAuthCodeRequested',
         contractAddress: '0xContract',
         args: {
-            topic1: '0x0000000000000000000000000000000000000000000000000000000000000064', // 100
+            authCode: 'twitter_auth_code_123', // Auth code from event
         },
         logIndex: 0n,
         transactionHash: '0xtxhash',
@@ -40,6 +42,8 @@ describe('verifyTwitter Handler', () => {
             logs: [],
         });
         (eventParser.extractEvents as jest.Mock).mockReturnValue([]);
+        // Mock Twitter verification to return Twitter ID 100
+        (twitterVerification.verifyTwitterAuthCodeBigInt as jest.Mock).mockResolvedValue(100n);
     });
 
     it('should create new user when Twitter ID is unique', async () => {
@@ -102,14 +106,15 @@ describe('verifyTwitter Handler', () => {
         expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalled();
     });
 
-    it('should handle invalid Twitter ID', async () => {
+    it('should handle invalid auth code', async () => {
         const invalidEvent: ParsedEvent = {
             ...mockEvent,
-            args: { topic1: '0x0000000000000000000000000000000000000000000000000000000000000000' }, // 0
+            args: {}, // No auth code
         };
 
         await verifyTwitter(invalidEvent, 'Base Mainnet', '0xWallet');
 
+        expect(twitterVerification.verifyTwitterAuthCodeBigInt).not.toHaveBeenCalled();
         expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
         expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
     });
@@ -124,14 +129,14 @@ describe('verifyTwitter Handler', () => {
         expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
     });
 
-    it('should handle missing topic1 in event args', async () => {
-        const invalidEvent: ParsedEvent = {
-            ...mockEvent,
-            args: {},
-        };
+    it('should handle verification failure', async () => {
+        (twitterVerification.verifyTwitterAuthCodeBigInt as jest.Mock).mockRejectedValue(
+            new Error('Invalid auth code')
+        );
 
-        await verifyTwitter(invalidEvent, 'Base Mainnet', '0xWallet');
+        await verifyTwitter(mockEvent, 'Base Mainnet', '0xWallet');
 
+        expect(twitterVerification.verifyTwitterAuthCodeBigInt).toHaveBeenCalled();
         expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
         expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
     });

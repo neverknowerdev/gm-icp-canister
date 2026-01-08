@@ -7,6 +7,7 @@ import * as atomicCounter from '../../src/gm-account-manager-canister/storage/at
 import * as evmRpc from '../../src/gm-account-manager-canister/utils/evmRpc';
 import * as eventParser from '../../src/gm-account-manager-canister/utils/eventParser';
 import * as userEvents from '../../src/gm-account-manager-canister/events/userEvents';
+import * as farcasterVerification from '../../src/gm-account-manager-canister/utils/farcasterVerification';
 
 // Mock dependencies
 jest.mock('../../src/gm-account-manager-canister/userManagement/userStore');
@@ -16,13 +17,14 @@ jest.mock('../../src/gm-account-manager-canister/storage/atomicCounter');
 jest.mock('../../src/gm-account-manager-canister/utils/evmRpc');
 jest.mock('../../src/gm-account-manager-canister/utils/eventParser');
 jest.mock('../../src/gm-account-manager-canister/events/userEvents');
+jest.mock('../../src/gm-account-manager-canister/utils/farcasterVerification');
 
 describe('verifyFarcaster Handler', () => {
     const mockEvent: ParsedEvent = {
         eventName: 'VerifyFarcasterRequested',
         contractAddress: '0xContract',
         args: {
-            topic1: '0x00000000000000000000000000000000000000000000000000000000000000c8', // 200
+            authToken: 'farcaster_auth_token_456', // Auth token from event
         },
         logIndex: 0n,
         transactionHash: '0xtxhash',
@@ -40,6 +42,8 @@ describe('verifyFarcaster Handler', () => {
             logs: [],
         });
         (eventParser.extractEvents as jest.Mock).mockReturnValue([]);
+        // Mock Farcaster verification to return Farcaster ID 200
+        (farcasterVerification.verifyFarcasterAuthBigInt as jest.Mock).mockResolvedValue(200n);
     });
 
     it('should create new user when Farcaster ID is unique', async () => {
@@ -101,26 +105,27 @@ describe('verifyFarcaster Handler', () => {
         expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalled();
     });
 
-    it('should handle invalid Farcaster ID', async () => {
+    it('should handle invalid auth token', async () => {
         const invalidEvent: ParsedEvent = {
             ...mockEvent,
-            args: { topic1: '0x0000000000000000000000000000000000000000000000000000000000000000' }, // 0
+            args: {}, // No auth token
         };
 
         await verifyFarcaster(invalidEvent, 'Base Mainnet', '0xWallet');
 
+        expect(farcasterVerification.verifyFarcasterAuthBigInt).not.toHaveBeenCalled();
         expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
         expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
     });
 
-    it('should handle missing topic1 in event args', async () => {
-        const invalidEvent: ParsedEvent = {
-            ...mockEvent,
-            args: {},
-        };
+    it('should handle verification failure', async () => {
+        (farcasterVerification.verifyFarcasterAuthBigInt as jest.Mock).mockRejectedValue(
+            new Error('Invalid auth token')
+        );
 
-        await verifyFarcaster(invalidEvent, 'Base Mainnet', '0xWallet');
+        await verifyFarcaster(mockEvent, 'Base Mainnet', '0xWallet');
 
+        expect(farcasterVerification.verifyFarcasterAuthBigInt).toHaveBeenCalled();
         expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
         expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
     });
