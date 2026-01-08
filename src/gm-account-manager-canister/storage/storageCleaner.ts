@@ -2,8 +2,6 @@
 
 import { Chain, chainName, CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN, BLOCKS_PER_DAY, TRANSACTION_MAX_AGE_DAYS } from '../utils/types';
 import {
-    clearAllInProcessingTransactions,
-    getTotalInProcessingTransactionCount,
     getAllProcessedTransactions,
     removeProcessedTransaction,
     getProcessedTransactionCount
@@ -14,7 +12,6 @@ import { getLastProcessedBlock } from './blockTracker';
  * Clean up storage - removes stale data
  * Currently cleans:
  * - Old processed transactions (older than 10 days based on block numbers)
- * - Stuck in-processing transactions (transactions that have been in processing for too long)
  * 
  * This should be called periodically (e.g., daily) to prevent storage bloat
  */
@@ -65,19 +62,7 @@ export async function cleanStorage(): Promise<void> {
         }
     }
 
-    // 2. Clean up all in-processing transactions
-    // These are transactions that should have been removed but weren't (e.g., due to errors)
-    // Since we can't track timestamps easily, we'll clear all in-processing transactions
-    // The worst case is that a transaction that's actually being processed gets cleared,
-    // but it will just be reprocessed, which is acceptable
-    const beforeInProcessingCount = getTotalInProcessingTransactionCount();
-    clearAllInProcessingTransactions();
-    const afterInProcessingCount = getTotalInProcessingTransactionCount();
-    const cleanedInProcessing = beforeInProcessingCount - afterInProcessingCount;
-
     console.log(`Storage cleanup completed:`);
     console.log(`  - Removed ${totalRemoved} old processed transactions`);
     console.log(`  - Remaining processed transactions: ${totalRemaining}`);
-    console.log(`  - Removed ${cleanedInProcessing} stuck in-processing transactions`);
-    console.log(`  - Remaining in-processing transactions: ${afterInProcessingCount}`);
 }

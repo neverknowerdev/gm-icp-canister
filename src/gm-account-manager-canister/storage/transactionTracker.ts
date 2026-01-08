@@ -1,21 +1,22 @@
 // Transaction Tracker - prevents duplicate processing of transactions
 
+import { StableBTreeMap } from 'azle';
 import { Chain } from '../utils/types';
 
-// Store processed transactions by chain: Map<Chain, Map<txHash, blockNumber>>
-const processedTransactions = new Map<Chain, Map<string, number>>();
+// Store processed transactions using composite key: `${chain}:${txHash}` -> blockNumber
+// Use StableBTreeMap for persistent storage
+// Memory ID 7 for processed transactions
+const processedTransactions = new StableBTreeMap<string, number>(7);
 
 // Store transactions currently being processed by chain: Map<Chain, Set<txHash>>
+// This is temporary state, so we keep it as Map (not persisted)
 const transactionsInProcessing = new Map<Chain, Set<string>>();
 
 /**
- * Get or create the transaction map for a chain
+ * Create composite key for transaction: `${chain}:${txHash}`
  */
-function getChainTransactions(chain: Chain): Map<string, number> {
-    if (!processedTransactions.has(chain)) {
-        processedTransactions.set(chain, new Map<string, number>());
-    }
-    return processedTransactions.get(chain)!;
+function getTransactionKey(chain: Chain, txHash: string): string {
+    return `${chain}:${txHash.toLowerCase()}`;
 }
 
 /**
@@ -32,16 +33,17 @@ function getChainInProcessing(chain: Chain): Set<string> {
  * Check if a transaction has been processed on a specific chain
  */
 export function isTransactionProcessed(chain: Chain, txHash: string): boolean {
-    const chainTransactions = getChainTransactions(chain);
-    return chainTransactions.has(txHash.toLowerCase());
+    const key = getTransactionKey(chain, txHash);
+    const stored = processedTransactions.get(key);
+    return stored.length > 0;
 }
 
 /**
  * Mark a transaction as processed with its block number
  */
 export function markTransactionProcessed(chain: Chain, txHash: string, blockNumber: number): void {
-    const chainTransactions = getChainTransactions(chain);
-    chainTransactions.set(txHash.toLowerCase(), blockNumber);
+    const key = getTransactionKey(chain, txHash);
+    processedTransactions.insert(key, blockNumber);
 }
 
 /**
@@ -49,42 +51,66 @@ export function markTransactionProcessed(chain: Chain, txHash: string, blockNumb
  * Returns null if transaction hasn't been processed
  */
 export function getTransactionBlockNumber(chain: Chain, txHash: string): number | null {
-    const chainTransactions = getChainTransactions(chain);
-    const blockNumber = chainTransactions.get(txHash.toLowerCase());
-    return blockNumber !== undefined ? blockNumber : null;
+    const key = getTransactionKey(chain, txHash);
+    const stored = processedTransactions.get(key);
+    if (stored.length === 0) {
+        return null;
+    }
+    return stored[0];
 }
 
 /**
  * Clear all processed transactions for a specific chain (useful for testing)
  */
 export function clearProcessedTransactions(chain: Chain): void {
-    processedTransactions.delete(chain);
+    const prefix = `${chain}:`;
+    const keysToRemove: string[] = [];
+    for (const [key] of processedTransactions.items()) {
+        if (key.startsWith(prefix)) {
+            keysToRemove.push(key);
+        }
+    }
+    for (const key of keysToRemove) {
+        processedTransactions.remove(key);
+    }
 }
 
 /**
  * Clear all processed transactions for all chains (useful for testing)
  */
 export function clearAllProcessedTransactions(): void {
-    processedTransactions.clear();
+    const keysToRemove: string[] = [];
+    for (const [key] of processedTransactions.items()) {
+        keysToRemove.push(key);
+    }
+    for (const key of keysToRemove) {
+        processedTransactions.remove(key);
+    }
 }
 
 /**
  * Get count of processed transactions for a specific chain
  */
 export function getProcessedTransactionCount(chain: Chain): number {
-    const chainTransactions = getChainTransactions(chain);
-    return chainTransactions.size;
+    const prefix = `${chain}:`;
+    let count = 0;
+    for (const [key] of processedTransactions.items()) {
+        if (key.startsWith(prefix)) {
+            count++;
+        }
+    }
+    return count;
 }
 
 /**
  * Get count of processed transactions across all chains
  */
 export function getTotalProcessedTransactionCount(): number {
-    let total = 0;
-    for (const chainTransactions of processedTransactions.values()) {
-        total += chainTransactions.size;
+    let count = 0;
+    for (const [] of processedTransactions.items()) {
+        count++;
     }
-    return total;
+    return count;
 }
 
 /**
@@ -149,15 +175,28 @@ export function getTotalInProcessingTransactionCount(): number {
  * Returns a copy of the map: Map<txHash, blockNumber>
  */
 export function getAllProcessedTransactions(chain: Chain): Map<string, number> {
-    const chainTransactions = getChainTransactions(chain);
-    return new Map(chainTransactions);
+    const prefix = `${chain}:`;
+    const result = new Map<string, number>();
+    for (const [key, blockNumber] of processedTransactions.items()) {
+        if (key.startsWith(prefix)) {
+            // Extract txHash from composite key (remove `${chain}:` prefix)
+            const txHash = key.substring(prefix.length);
+            result.set(txHash, blockNumber);
+        }
+    }
+    return result;
 }
 
 /**
  * Remove a processed transaction
  */
 export function removeProcessedTransaction(chain: Chain, txHash: string): boolean {
-    const chainTransactions = getChainTransactions(chain);
-    return chainTransactions.delete(txHash.toLowerCase());
+    const key = getTransactionKey(chain, txHash);
+    const stored = processedTransactions.get(key);
+    if (stored.length === 0) {
+        return false;
+    }
+    processedTransactions.remove(key);
+    return true;
 }
 
