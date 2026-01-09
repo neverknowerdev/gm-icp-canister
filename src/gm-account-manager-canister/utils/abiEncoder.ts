@@ -73,6 +73,64 @@ function encodeAddressArray(addresses: string[]): { data: Uint8Array; offset: nu
 }
 
 /**
+ * Encode string for ABI encoding
+ * Returns the encoded data (length + padded string)
+ */
+function encodeString(str: string): Uint8Array {
+    const strBytes = new TextEncoder().encode(str);
+    const length = strBytes.length;
+    const lengthPad = padUint256(BigInt(length));
+    
+    const paddedLength = Math.ceil(length / 32) * 32;
+    const encodedString = new Uint8Array(paddedLength);
+    encodedString.set(strBytes, 0);
+    
+    const result = new Uint8Array(32 + encodedString.length);
+    result.set(lengthPad, 0);
+    result.set(encodedString, 32);
+    
+    return result;
+}
+
+/**
+ * Encode verifyTwitter function call
+ * Function signature: verifyTwitter(string,address)
+ * Parameters: userID, wallet
+ */
+export function encodeVerifyTwitter(
+    userID: string,
+    wallet: string
+): Uint8Array {
+    const selector = getFunctionSelector('verifyTwitter(string,address)');
+    
+    const userIDEncoded = encodeString(userID);
+    const walletEncoded = encodeAddress(wallet);
+    
+    const userIDOffset = 4 + 32 + 32;
+    const result = new Uint8Array(
+        4 +           // selector
+        32 +          // userID offset
+        32 +          // wallet
+        userIDEncoded.length  // userID data (length + padded string)
+    );
+    
+    let offset = 0;
+    
+    result.set(selector, offset);
+    offset += 4;
+    
+    result.set(padUint256(BigInt(userIDOffset)), offset);
+    offset += 32;
+    
+    result.set(walletEncoded, offset);
+    offset += 32;
+    
+    result.set(userIDEncoded, offset);
+    
+    return result;
+}
+
+/**
  * Encode createOrUpdateUser function call
  * Function signature: createOrUpdateUser(uint256,address,uint256,uint256,address[])
  * Parameters: userId, wallet, twitterId, farcasterId, wallets[]

@@ -1,22 +1,13 @@
 import { verifyTwitter } from '../../src/gm-account-manager-canister/events/verifyTwitter';
 import { ParsedEvent, CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from '../../src/gm-account-manager-canister/utils/types';
-import * as userStore from '../../src/gm-account-manager-canister/userManagement/userStore';
 import * as smartContract from '../../src/gm-account-manager-canister/utils/smartContract';
 import * as config from '../../src/gm-account-manager-canister/utils/config';
-import * as atomicCounter from '../../src/gm-account-manager-canister/storage/atomicCounter';
 import * as evmRpc from '../../src/gm-account-manager-canister/utils/evmRpc';
-import * as eventParser from '../../src/gm-account-manager-canister/utils/eventParser';
-import * as userEvents from '../../src/gm-account-manager-canister/events/userEvents';
 import * as twitterVerification from '../../src/gm-account-manager-canister/utils/twitterVerification';
 
-// Mock dependencies
-jest.mock('../../src/gm-account-manager-canister/userManagement/userStore');
 jest.mock('../../src/gm-account-manager-canister/utils/smartContract');
 jest.mock('../../src/gm-account-manager-canister/utils/config');
-jest.mock('../../src/gm-account-manager-canister/storage/atomicCounter');
 jest.mock('../../src/gm-account-manager-canister/utils/evmRpc');
-jest.mock('../../src/gm-account-manager-canister/utils/eventParser');
-jest.mock('../../src/gm-account-manager-canister/events/userEvents');
 jest.mock('../../src/gm-account-manager-canister/utils/twitterVerification');
 
 describe('verifyTwitter Handler', () => {
@@ -24,7 +15,9 @@ describe('verifyTwitter Handler', () => {
         eventName: 'VerifyTwitterByAuthCodeRequested',
         contractAddress: '0xContract',
         args: {
-            authCode: 'twitter_auth_code_123', // Auth code from event
+            authCode: 'GM001234567890ab12',
+            tweetID: '1234567890',
+            userID: '100',
         },
         logIndex: 0n,
         transactionHash: '0xtxhash',
@@ -34,137 +27,132 @@ describe('verifyTwitter Handler', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         (config.getContractAddress as jest.Mock).mockReturnValue('0xContract');
-        (config.getContractAddresses as jest.Mock).mockReturnValue(['0xContract']);
-        (atomicCounter.generateNextUserId as jest.Mock).mockResolvedValue(1n);
-        (smartContract.callCreateOrUpdateUser as jest.Mock).mockResolvedValue('0xtxhash123');
+        (smartContract.callVerifyTwitter as jest.Mock).mockResolvedValue('0xtxhash123');
         (evmRpc.fetchTransactionReceipt as jest.Mock).mockResolvedValue({
             status: 1n,
             logs: [],
         });
-        (eventParser.extractEvents as jest.Mock).mockReturnValue([]);
-        // Mock Twitter verification to return Twitter ID 100
-        (twitterVerification.verifyTwitterAuthCodeBigInt as jest.Mock).mockResolvedValue(100n);
+        (twitterVerification.verifyTwitterAuthCode as jest.Mock).mockResolvedValue('100');
     });
 
-    it('should create new user when Twitter ID is unique', async () => {
-        (userStore.getUserByTwitterId as jest.Mock).mockReturnValue(null);
-
+    it('should verify Twitter and call verifyTwitter on contract', async () => {
         await verifyTwitter(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
 
-        expect(atomicCounter.generateNextUserId).toHaveBeenCalled();
-        expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalledWith(
+        expect(twitterVerification.verifyTwitterAuthCode).toHaveBeenCalledWith(
+            'GM001234567890ab12',
+            '1234567890',
+            '100',
+            '0xwallet'
+        );
+        expect(smartContract.callVerifyTwitter).toHaveBeenCalledWith(
             '0xContract',
             CHAIN_BASE_MAINNET,
-            1n,
-            '0xwallet',
-            100n,
-            0n,
-            [{ wallet: '0xwallet', chain: CHAIN_BASE_MAINNET }]
+            '100',
+            '0xwallet'
         );
         expect(evmRpc.fetchTransactionReceipt).toHaveBeenCalledWith(CHAIN_BASE_MAINNET, '0xtxhash123');
-        expect(eventParser.extractEvents).toHaveBeenCalled();
     });
 
-    it('should add wallet to existing user when Twitter ID exists', async () => {
-        const existingUser = {
-            userId: 1n,
-            chains: [CHAIN_BASE_MAINNET],
-            twitterId: 100n,
-            farcasterId: 0n,
-            isVerified: false,
-            verifications: [],
-            primaryWallet: '0xoldwallet',
-            primaryChain: CHAIN_BASE_MAINNET,
-            wallets: [{ wallet: '0xoldwallet', chain: CHAIN_BASE_MAINNET }],
-        };
-
-        (userStore.getUserByTwitterId as jest.Mock).mockReturnValue(existingUser);
-
-        await verifyTwitter(mockEvent, CHAIN_WORLDCHAIN, '0xWallet');
-
-        expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
-        expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalledWith(
-            '0xContract',
-            CHAIN_WORLDCHAIN,
-            1n,
-            '0xwallet',
-            100n,
-            0n,
-            [{ wallet: '0xwallet', chain: CHAIN_WORLDCHAIN }]
-        );
-    });
-
-    it('should update Twitter ID when wallet exists but no Twitter ID', async () => {
-        // Note: In new architecture, we check Twitter ID first, then wallet
-        // If Twitter ID doesn't exist, we generate new userId
-        // This test may need to be adjusted based on actual requirements
-        (userStore.getUserByTwitterId as jest.Mock).mockReturnValue(null);
-
-        await verifyTwitter(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
-
-        expect(atomicCounter.generateNextUserId).toHaveBeenCalled();
-        expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalled();
-    });
-
-    it('should handle invalid auth code', async () => {
+    it('should handle missing auth code', async () => {
         const invalidEvent: ParsedEvent = {
             ...mockEvent,
-            args: {}, // No auth code
+            args: {
+                tweetID: '1234567890',
+                userID: '100',
+            },
         };
 
         await verifyTwitter(invalidEvent, CHAIN_BASE_MAINNET, '0xWallet');
 
-        expect(twitterVerification.verifyTwitterAuthCodeBigInt).not.toHaveBeenCalled();
-        expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
-        expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
+        expect(twitterVerification.verifyTwitterAuthCode).not.toHaveBeenCalled();
+        expect(smartContract.callVerifyTwitter).not.toHaveBeenCalled();
+    });
+
+    it('should handle missing tweet ID', async () => {
+        const invalidEvent: ParsedEvent = {
+            ...mockEvent,
+            args: {
+                authCode: 'GM001234567890ab12',
+                userID: '100',
+            },
+        };
+
+        await verifyTwitter(invalidEvent, CHAIN_BASE_MAINNET, '0xWallet');
+
+        expect(twitterVerification.verifyTwitterAuthCode).not.toHaveBeenCalled();
+        expect(smartContract.callVerifyTwitter).not.toHaveBeenCalled();
+    });
+
+    it('should handle missing user ID', async () => {
+        const invalidEvent: ParsedEvent = {
+            ...mockEvent,
+            args: {
+                authCode: 'GM001234567890ab12',
+                tweetID: '1234567890',
+            },
+        };
+
+        await verifyTwitter(invalidEvent, CHAIN_BASE_MAINNET, '0xWallet');
+
+        expect(twitterVerification.verifyTwitterAuthCode).not.toHaveBeenCalled();
+        expect(smartContract.callVerifyTwitter).not.toHaveBeenCalled();
     });
 
     it('should handle missing contract address gracefully', async () => {
         (config.getContractAddress as jest.Mock).mockReturnValue(null);
-        (userStore.getUserByTwitterId as jest.Mock).mockReturnValue(null);
 
         await verifyTwitter(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
 
-        expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
-        expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
+        expect(twitterVerification.verifyTwitterAuthCode).toHaveBeenCalled();
+        expect(smartContract.callVerifyTwitter).not.toHaveBeenCalled();
     });
 
     it('should handle verification failure', async () => {
-        (twitterVerification.verifyTwitterAuthCodeBigInt as jest.Mock).mockRejectedValue(
-            new Error('Invalid auth code')
+        (twitterVerification.verifyTwitterAuthCode as jest.Mock).mockRejectedValue(
+            new Error('Auth code not found in tweet')
         );
 
         await verifyTwitter(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
 
-        expect(twitterVerification.verifyTwitterAuthCodeBigInt).toHaveBeenCalled();
-        expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
-        expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
+        expect(twitterVerification.verifyTwitterAuthCode).toHaveBeenCalled();
+        expect(smartContract.callVerifyTwitter).not.toHaveBeenCalled();
     });
 
-    it('should handle failed wallet addition gracefully', async () => {
-        // In new architecture, wallet addition happens via events from contract
-        // This test checks that transaction failure is handled
-        (userStore.getUserByTwitterId as jest.Mock).mockReturnValue(null);
-        (smartContract.callCreateOrUpdateUser as jest.Mock).mockResolvedValue(null);
+    it('should handle failed transaction', async () => {
+        (smartContract.callVerifyTwitter as jest.Mock).mockResolvedValue(null);
 
-        await verifyTwitter(mockEvent, CHAIN_WORLDCHAIN, '0xWallet');
+        await verifyTwitter(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
 
+        expect(twitterVerification.verifyTwitterAuthCode).toHaveBeenCalled();
+        expect(smartContract.callVerifyTwitter).toHaveBeenCalled();
         expect(evmRpc.fetchTransactionReceipt).not.toHaveBeenCalled();
     });
 
     it('should handle case-insensitive wallet addresses', async () => {
-        (userStore.getUserByTwitterId as jest.Mock).mockReturnValue(null);
+        await verifyTwitter(mockEvent, CHAIN_BASE_MAINNET, '0xWALLET');
 
-        await verifyTwitter(mockEvent, CHAIN_BASE_MAINNET, '0xWALLET'); // Different case
-
-        expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalledWith(
+        expect(twitterVerification.verifyTwitterAuthCode).toHaveBeenCalledWith(
+            'GM001234567890ab12',
+            '1234567890',
+            '100',
+            '0xwallet'
+        );
+        expect(smartContract.callVerifyTwitter).toHaveBeenCalledWith(
             '0xContract',
             CHAIN_BASE_MAINNET,
-            1n,
-            '0xwallet', // Should be lowercase
-            100n,
-            0n,
-            [{ wallet: '0xwallet', chain: CHAIN_BASE_MAINNET }]
+            '100',
+            '0xwallet'
+        );
+    });
+
+    it('should work with different chains', async () => {
+        await verifyTwitter(mockEvent, CHAIN_WORLDCHAIN, '0xWallet');
+
+        expect(smartContract.callVerifyTwitter).toHaveBeenCalledWith(
+            '0xContract',
+            CHAIN_WORLDCHAIN,
+            '100',
+            '0xwallet'
         );
     });
 });

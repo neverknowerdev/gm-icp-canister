@@ -1,5 +1,5 @@
 import { User } from '../userManagement/userTypes';
-import { encodeCreateOrUpdateUser } from './abiEncoder';
+import { encodeCreateOrUpdateUser, encodeVerifyTwitter } from './abiEncoder';
 import { getEthereumAddress } from './thresholdSigning';
 import { sendSignedTransaction } from './evmTransaction';
 import { Chain } from './types';
@@ -121,6 +121,46 @@ export async function callAddUser(
     } catch (error: any) {
         console.error(`Error calling addUser: ${error}`);
         return false;
+    }
+}
+
+/**
+ * Calls the smart contract's verifyTwitter function
+ * This is used for Twitter verification via authCode
+ * 
+ * @param contractAddress - The contract address to call
+ * @param chain - The chain ID
+ * @param userID - Twitter user ID (string)
+ * @param wallet - The wallet address
+ * @returns Transaction hash if successful, null otherwise
+ */
+export async function callVerifyTwitter(
+    contractAddress: string,
+    chain: Chain,
+    userID: string,
+    wallet: string
+): Promise<string | null> {
+    try {
+        console.log(`Calling verifyTwitter on contract ${contractAddress}:`);
+        console.log(`  userID: ${userID}`);
+        console.log(`  wallet: ${wallet}`);
+
+        const encodedData = encodeVerifyTwitter(userID, wallet);
+
+        const canisterAddress = await getEthereumAddress();
+
+        const txHash = await sendSignedTransaction(
+            chain,
+            contractAddress,
+            encodedData,
+            canisterAddress
+        );
+
+        console.log(`Transaction sent successfully: ${txHash}`);
+        return txHash;
+    } catch (error: any) {
+        console.error(`Error calling verifyTwitter: ${error}`);
+        return null;
     }
 }
 

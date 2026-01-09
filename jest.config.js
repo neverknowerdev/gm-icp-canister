@@ -26,11 +26,7 @@ module.exports = {
       },
     }],
     // Use babel-jest for noble packages (ESM to CJS)
-    'node_modules/@noble/.+\\.js$': ['babel-jest', {
-      presets: [
-        ['@babel/preset-env', { targets: { node: 'current' } }]
-      ],
-    }],
+    'node_modules/@noble/.+\\.js$': 'babel-jest',
   },
   // Transform noble packages from ESM to CJS
   transformIgnorePatterns: [

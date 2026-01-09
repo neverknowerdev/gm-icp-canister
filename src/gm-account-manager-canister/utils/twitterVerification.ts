@@ -1,33 +1,14 @@
 /**
  * Twitter Verification Utility
- * Verifies Twitter OAuth auth codes and extracts Twitter user IDs
+ * Verifies Twitter auth codes by fetching tweets and validating authCode in tweet content
  */
 
-import { httpPost, httpGet } from './httpClient';
-
-/**
- * Convert bytes to base64 string
- */
-function bytesToBase64(bytes: Uint8Array): string {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-    let result = '';
-    for (let i = 0; i < bytes.length; i += 3) {
-        const a = bytes[i];
-        const b = bytes[i + 1] || 0;
-        const c = bytes[i + 2] || 0;
-        const bitmap = (a << 16) | (b << 8) | c;
-        result += chars.charAt((bitmap >> 18) & 63);
-        result += chars.charAt((bitmap >> 12) & 63);
-        result += (i + 1 < bytes.length ? chars.charAt((bitmap >> 6) & 63) : '=');
-        result += (i + 2 < bytes.length ? chars.charAt(bitmap & 63) : '=');
-    }
-    return result;
-}
+import { httpGet } from './httpClient';
 
 export interface TwitterApiConfig {
-    clientId: string;
-    clientSecret: string;
-    redirectUri: string;
+    tweetFetchURL: string;
+    headerName: string;
+    bearerToken: string;
 }
 
 let twitterConfig: TwitterApiConfig | null = null;
@@ -40,78 +21,134 @@ export function initTwitterConfig(config: TwitterApiConfig): void {
     console.log('Twitter API configuration initialized');
 }
 
+interface TwitterResponseV1 {
+    data?: {
+        tweet_results?: {
+            result?: {
+                legacy?: {
+                    full_text: string;
+                    user_id_str: string;
+                };
+            };
+        };
+    };
+}
+
+interface TwitterResponseV2 {
+    text?: string;
+    author_id?: string;
+}
+
 /**
- * Verify Twitter auth code and get Twitter user ID
+ * Get tweet content and author ID from Twitter API response
+ */
+function getTweetContentAndAuthorId(response: any): { tweetContent: string; authorId: string } | null {
+    if (response.data?.tweet_results?.result?.legacy) {
+        return {
+            tweetContent: response.data.tweet_results.result.legacy.full_text,
+            authorId: response.data.tweet_results.result.legacy.user_id_str
+        };
+    }
+
+    if (response.text && response.author_id) {
+        return {
+            tweetContent: response.text,
+            authorId: response.author_id
+        };
+    }
+
+    return null;
+}
+
+/**
+ * Validate auth code format
+ * Auth code format: GM${walletStartingLetterNumberStr}${wallet10Letters}${random2}
+ */
+export function validateAuthCode(authCode: string, walletAddress: string): { isValid: boolean; error?: string } {
+    if (!authCode.startsWith('GM')) {
+        return { isValid: false, error: "Auth code must start with 'GM'" };
+    }
+
+    const walletStartingLetterNumberStr = authCode.substring(2, 4);
+    if (!/^\d{2}$/.test(walletStartingLetterNumberStr)) {
+        return { isValid: false, error: "Invalid wallet starting letter number format" };
+    }
+
+    const wallet10Letters = authCode.substring(4, 14);
+    if (!/^[a-fA-F0-9]{10}$/.test(wallet10Letters)) {
+        return { isValid: false, error: "Invalid wallet letters format" };
+    }
+
+    const walletStartingLetterNumber = parseInt(walletStartingLetterNumberStr);
+    const actualWalletLetters = walletAddress.substring(walletStartingLetterNumber, walletStartingLetterNumber + 10);
+
+    if (wallet10Letters.toLowerCase() !== actualWalletLetters.toLowerCase()) {
+        return { isValid: false, error: "Wallet letters in auth code do not match the wallet address" };
+    }
+
+    return { isValid: true };
+}
+
+/**
+ * Verify Twitter auth code by fetching tweet and validating
  * 
  * Flow:
- * 1. Exchange auth code for access token using Twitter OAuth 2.0 API
- * 2. Use access token to get user information
- * 3. Extract Twitter ID from user info
+ * 1. Validate auth code format
+ * 2. Fetch tweet using Twitter API with tweetID
+ * 3. Check if auth code exists in tweet content
+ * 4. Verify user ID matches tweet author
  * 
- * @param authCode - OAuth authorization code from the event
- * @returns Twitter user ID (as string, to be converted to bigint)
+ * @param authCode - Auth code from the event (format: GM${walletStartingLetterNumberStr}${wallet10Letters}${random2})
+ * @param tweetID - Tweet ID to fetch
+ * @param userID - Expected Twitter user ID
+ * @param walletAddress - Wallet address for auth code validation
+ * @returns Twitter user ID if verification succeeds
  */
-export async function verifyTwitterAuthCode(authCode: string): Promise<string> {
+export async function verifyTwitterAuthCode(
+    authCode: string,
+    tweetID: string,
+    userID: string,
+    walletAddress: string
+): Promise<string> {
     if (!twitterConfig) {
         throw new Error('Twitter API configuration not initialized. Call initTwitterConfig first.');
     }
 
+    const authCodeValidation = validateAuthCode(authCode, walletAddress);
+    if (!authCodeValidation.isValid) {
+        throw new Error(authCodeValidation.error || "Invalid auth code");
+    }
+
     try {
-        // Step 1: Exchange auth code for access token
-        const tokenUrl = 'https://api.twitter.com/2/oauth2/token';
-        const tokenRequestBody = new URLSearchParams({
-            code: authCode,
-            grant_type: 'authorization_code',
-            client_id: twitterConfig.clientId,
-            redirect_uri: twitterConfig.redirectUri,
-        }).toString();
+        const response = await httpGet(
+            `${twitterConfig.tweetFetchURL}?tweet_id=${tweetID}`,
+            {
+                [twitterConfig.headerName]: twitterConfig.bearerToken,
+            }
+        );
 
-        // Basic auth header: base64(clientId:clientSecret)
-        const credentials = `${twitterConfig.clientId}:${twitterConfig.clientSecret}`;
-        // Encode to base64 - using TextEncoder/TextDecoder approach for compatibility
-        const credentialsBytes = new TextEncoder().encode(credentials);
-        // Convert bytes to base64 manually (simpler than using btoa which may not be available)
-        const basicAuth = bytesToBase64(credentialsBytes);
+        const responseData = JSON.parse(response.body);
+        const tweetData = getTweetContentAndAuthorId(responseData);
 
-        const tokenResponse = await httpPost(tokenUrl, tokenRequestBody, {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': `Basic ${basicAuth}`,
-        });
-
-        const tokenData = JSON.parse(tokenResponse.body);
-        if (!tokenData.access_token) {
-            throw new Error(`Failed to get access token: ${tokenResponse.body}`);
+        if (!tweetData) {
+            throw new Error("Failed to parse tweet data");
         }
 
-        const accessToken = tokenData.access_token;
+        const { tweetContent, authorId } = tweetData;
 
-        // Step 2: Get user information using access token
-        const userInfoUrl = 'https://api.twitter.com/2/users/me?user.fields=id,username';
-        const userInfoResponse = await httpGet(userInfoUrl, {
-            'Authorization': `Bearer ${accessToken}`,
-        });
-
-        const userData = JSON.parse(userInfoResponse.body);
-        if (!userData.data || !userData.data.id) {
-            throw new Error(`Failed to get user info: ${userInfoResponse.body}`);
+        if (!tweetContent.includes(authCode)) {
+            throw new Error("Auth code not found in tweet");
         }
 
-        // Step 3: Extract Twitter ID
-        const twitterId = userData.data.id;
-        console.log(`Successfully verified Twitter auth code, Twitter ID: ${twitterId}`);
-        
-        return twitterId;
+        if (authorId !== userID) {
+            throw new Error("User ID mismatch");
+        }
+
+        console.log(`Successfully verified Twitter auth code, Twitter ID: ${authorId}`);
+        return authorId;
     } catch (error: any) {
         console.error(`Error verifying Twitter auth code: ${error.message}`);
         throw new Error(`Twitter verification failed: ${error.message}`);
     }
-}
-
-/**
- * Verify Twitter auth code and return as bigint
- */
-export async function verifyTwitterAuthCodeBigInt(authCode: string): Promise<bigint> {
-    const twitterIdStr = await verifyTwitterAuthCode(authCode);
-    return BigInt(twitterIdStr);
 }
 

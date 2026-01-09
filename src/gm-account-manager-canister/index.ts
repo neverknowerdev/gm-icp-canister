@@ -130,23 +130,21 @@ export default class {
 
     /**
      * Initialize Twitter API configuration for verification
-     * clientSecretEncrypted should be encrypted using the canister's public key (from encryptionPublicKey())
+     * Uses authCode-based verification (fetch tweet, validate authCode in tweet)
      */
     @update([IDL.Record({
-        clientId: IDL.Text,
-        clientSecretEncrypted: IDL.Text,
-        redirectUri: IDL.Text,
+        tweetFetchURL: IDL.Text,
+        headerName: IDL.Text,
+        bearerTokenEncrypted: IDL.Text,
     })], IDL.Null)
-    setTwitterConfig(config: { clientId: string; clientSecretEncrypted: string; redirectUri: string }): null {
+    setTwitterConfig(config: { tweetFetchURL: string; headerName: string; bearerTokenEncrypted: string }): null {
         try {
-            // Decrypt the client secret
-            const clientSecret = decryptSecret(config.clientSecretEncrypted);
+            const bearerToken = decryptSecret(config.bearerTokenEncrypted);
 
-            // Pass decrypted values to init function
             initTwitterConfig({
-                clientId: config.clientId,
-                clientSecret: clientSecret,
-                redirectUri: config.redirectUri,
+                tweetFetchURL: config.tweetFetchURL,
+                headerName: config.headerName,
+                bearerToken: bearerToken,
             });
             console.log('Twitter API configuration updated successfully');
         } catch (error: any) {
