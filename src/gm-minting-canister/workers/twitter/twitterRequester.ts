@@ -27,12 +27,14 @@ export class TwitterRequester {
 
     /**
      * Generate a unique idempotency key for HTTP requests
+     * Uses timestamp and counter for uniqueness (no randomness needed for idempotency keys)
      */
     private generateIdempotencyKey(): string {
         this.requestCounter++;
         const timestamp = Date.now();
-        const random = Math.floor(Math.random() * 1000000);
-        return `${timestamp}-${this.requestCounter}-${random}`;
+        // Using counter provides sufficient uniqueness within a session
+        // Combined with timestamp, this ensures uniqueness across restarts
+        return `tw-${timestamp}-${this.requestCounter}`;
     }
 
     /**
@@ -202,4 +204,3 @@ export class TwitterRequester {
         return { tweets, nextCursor };
     }
 }
-

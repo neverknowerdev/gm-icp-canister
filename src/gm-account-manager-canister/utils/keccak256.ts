@@ -9,8 +9,8 @@
  * 
  * Compatible with Ethereum's keccak256 hash function.
  */
-import { keccak_256 } from '@noble/hashes/sha3';
-import { bytesToHex } from '@noble/hashes/utils';
+import { keccak_256 } from '@noble/hashes/sha3.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 
 /**
  * Keccak-256 hash function

@@ -2,14 +2,21 @@ import {
     initializeEncryption,
     getPublicKey,
     decryptSecret,
+    encryptSecret,
+    isEncryptionInitialized,
 } from '../../src/gm-minting-canister/encryption';
 import { initializeTwitter } from '../../src/gm-minting-canister/workers/twitter/process';
 import { initializeFarcaster } from '../../src/gm-minting-canister/workers/farcaster/process';
 import { clearMockStorageById } from '../mocks/azle.mock';
-import * as forge from 'node-forge';
+import * as crypto from 'crypto';
 
 // Encryption module uses memory ID 0 for minting canister
 const ENCRYPTION_STORAGE_ID = 0;
+
+// Helper to generate random bytes for testing
+function getRandomBytes(size: number): Uint8Array {
+    return new Uint8Array(crypto.randomBytes(size));
+}
 
 // Reset storage before each test
 beforeEach(() => {
@@ -18,79 +25,76 @@ beforeEach(() => {
 
 describe('Minting Canister Encryption Module', () => {
     describe('initializeEncryption', () => {
-        it('should generate and store RSA key pair', () => {
-            initializeEncryption();
+        it('should generate and store X25519 key pair', async () => {
+            await initializeEncryption();
 
             const publicKey = getPublicKey();
             expect(publicKey).toBeDefined();
-            expect(publicKey).toContain('-----BEGIN PUBLIC KEY-----');
-            expect(publicKey).toContain('-----END PUBLIC KEY-----');
+            // X25519 public key is 32 bytes = 64 hex chars
+            expect(publicKey).toHaveLength(64);
+            expect(/^[0-9a-f]+$/.test(publicKey)).toBe(true);
         });
 
-        it('should not regenerate keys if they already exist', () => {
-            initializeEncryption();
+        it('should not regenerate keys if they already exist', async () => {
+            await initializeEncryption();
             const firstPublicKey = getPublicKey();
 
             // Initialize again
-            initializeEncryption();
+            await initializeEncryption();
             const secondPublicKey = getPublicKey();
 
             // Should be the same key
             expect(firstPublicKey).toBe(secondPublicKey);
         });
+
+        it('should set isEncryptionInitialized to true', async () => {
+            expect(isEncryptionInitialized()).toBe(false);
+            await initializeEncryption();
+            expect(isEncryptionInitialized()).toBe(true);
+        });
     });
 
     describe('getPublicKey', () => {
-        it('should return public key in PEM format', () => {
-            initializeEncryption();
+        it('should return public key as hex string', async () => {
+            await initializeEncryption();
             const publicKey = getPublicKey();
 
             expect(publicKey).toBeDefined();
-            expect(publicKey).toContain('-----BEGIN PUBLIC KEY-----');
-            expect(publicKey).toContain('-----END PUBLIC KEY-----');
-
-            // Verify it's a valid PEM public key
-            const publicKeyObj = forge.pki.publicKeyFromPem(publicKey);
-            expect(publicKeyObj).toBeDefined();
+            // X25519 public key is 32 bytes = 64 hex chars
+            expect(publicKey).toHaveLength(64);
+            expect(/^[0-9a-f]+$/.test(publicKey)).toBe(true);
         });
 
-        it('should auto-initialize if keys do not exist', () => {
-            // Don't call initializeEncryption first
-            const publicKey = getPublicKey();
-
-            expect(publicKey).toBeDefined();
-            expect(publicKey).toContain('-----BEGIN PUBLIC KEY-----');
+        it('should throw if keys are not initialized', () => {
+            expect(() => getPublicKey()).toThrow('Encryption not initialized');
         });
     });
 
     describe('decryptSecret', () => {
-        it('should decrypt a secret that was encrypted with the public key', () => {
+        it('should decrypt a secret that was encrypted with the public key', async () => {
             // Initialize encryption
-            initializeEncryption();
-            const publicKeyPem = getPublicKey();
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
 
             // Original secret
             const originalSecret = 'my-super-secret-api-key-12345';
 
-            // Encrypt using the public key (simulating client-side encryption)
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
-            const encryptedBytes = publicKey.encrypt(originalSecret, 'RSA-OAEP');
-            const encryptedBase64 = forge.util.encode64(encryptedBytes);
+            // Encrypt using the encryptSecret function with random bytes
+            const randomBytes = getRandomBytes(44);
+            const encryptedHex = encryptSecret(originalSecret, publicKeyHex, randomBytes);
 
             // Decrypt using the canister's decryptSecret function
-            const decryptedSecret = decryptSecret(encryptedBase64);
+            const decryptedSecret = decryptSecret(encryptedHex);
 
             // Should match the original
             expect(decryptedSecret).toBe(originalSecret);
         });
 
-        it('should handle different secret values', () => {
-            initializeEncryption();
-            const publicKeyPem = getPublicKey();
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+        it('should handle different secret values', async () => {
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
 
-            // RSA-OAEP with 2048-bit key can encrypt up to ~214 bytes
-            // Test various secret types within this limit
+            // Test various secret types
             const testSecrets = [
                 'simple-secret',
                 'medium-length-secret-12345',
@@ -98,9 +102,9 @@ describe('Minting Canister Encryption Module', () => {
             ];
 
             for (const originalSecret of testSecrets) {
-                const encryptedBytes = publicKey.encrypt(originalSecret, 'RSA-OAEP');
-                const encryptedBase64 = forge.util.encode64(encryptedBytes);
-                const decryptedSecret = decryptSecret(encryptedBase64);
+                const randomBytes = getRandomBytes(44);
+                const encryptedHex = encryptSecret(originalSecret, publicKeyHex, randomBytes);
+                const decryptedSecret = decryptSecret(encryptedHex);
 
                 expect(decryptedSecret).toBe(originalSecret);
             }
@@ -108,11 +112,10 @@ describe('Minting Canister Encryption Module', () => {
     });
 
     describe('Twitter Initialization with Encrypted Secrets', () => {
-        it('should initialize Twitter with encrypted bearerToken and optimizedAPISecretKey', () => {
+        it('should initialize Twitter with encrypted bearerToken and optimizedAPISecretKey', async () => {
             // Initialize encryption
-            initializeEncryption();
-            const publicKeyPem = getPublicKey();
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
 
             // Original secrets
             const bearerToken = 'twitter-bearer-token-abc123';
@@ -122,12 +125,10 @@ describe('Minting Canister Encryption Module', () => {
             const twitterOptimizedServerHost = 'https://optimized-server.com';
 
             // Encrypt secrets
-            const encryptedBearerToken = forge.util.encode64(
-                publicKey.encrypt(bearerToken, 'RSA-OAEP')
-            );
-            const encryptedSecretKey = forge.util.encode64(
-                publicKey.encrypt(optimizedAPISecretKey, 'RSA-OAEP')
-            );
+            const randomBytes1 = getRandomBytes(44);
+            const randomBytes2 = getRandomBytes(44);
+            const encryptedBearerToken = encryptSecret(bearerToken, publicKeyHex, randomBytes1);
+            const encryptedSecretKey = encryptSecret(optimizedAPISecretKey, publicKeyHex, randomBytes2);
 
             // Decrypt and initialize (simulating canister behavior)
             const decryptedBearerToken = decryptSecret(encryptedBearerToken);
@@ -149,10 +150,9 @@ describe('Minting Canister Encryption Module', () => {
             expect(decryptedSecretKey).toBe(optimizedAPISecretKey);
         });
 
-        it('should handle full Twitter initialization flow with encryption', () => {
-            initializeEncryption();
-            const publicKeyPem = getPublicKey();
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+        it('should handle full Twitter initialization flow with encryption', async () => {
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
 
             const secrets = {
                 bearerToken: 'bearer-token-123',
@@ -161,13 +161,11 @@ describe('Minting Canister Encryption Module', () => {
             };
 
             // Step 1: Encrypt secrets on client side
+            const randomBytes1 = getRandomBytes(44);
+            const randomBytes2 = getRandomBytes(44);
             const encryptedSecrets = {
-                bearerTokenEncrypted: forge.util.encode64(
-                    publicKey.encrypt(secrets.bearerToken, 'RSA-OAEP')
-                ),
-                optimizedAPISecretKeyEncrypted: forge.util.encode64(
-                    publicKey.encrypt(secrets.optimizedAPISecretKey, 'RSA-OAEP')
-                ),
+                bearerTokenEncrypted: encryptSecret(secrets.bearerToken, publicKeyHex, randomBytes1),
+                optimizedAPISecretKeyEncrypted: encryptSecret(secrets.optimizedAPISecretKey, publicKeyHex, randomBytes2),
                 authHeaderName: secrets.authHeaderName,
             };
 
@@ -192,20 +190,18 @@ describe('Minting Canister Encryption Module', () => {
     });
 
     describe('Farcaster Initialization with Encrypted Secrets', () => {
-        it('should initialize Farcaster with encrypted apiKey', () => {
+        it('should initialize Farcaster with encrypted apiKey', async () => {
             // Initialize encryption
-            initializeEncryption();
-            const publicKeyPem = getPublicKey();
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
 
             // Original secrets
             const apiKey = 'farcaster-api-key-abc123';
             const farcasterAPIURL = 'https://api.warpcast.com';
 
             // Encrypt apiKey
-            const encryptedApiKey = forge.util.encode64(
-                publicKey.encrypt(apiKey, 'RSA-OAEP')
-            );
+            const randomBytes = getRandomBytes(44);
+            const encryptedApiKey = encryptSecret(apiKey, publicKeyHex, randomBytes);
 
             // Decrypt and initialize (simulating canister behavior)
             const decryptedApiKey = decryptSecret(encryptedApiKey);
@@ -222,10 +218,9 @@ describe('Minting Canister Encryption Module', () => {
             expect(decryptedApiKey).toBe(apiKey);
         });
 
-        it('should initialize Farcaster with encrypted apiKey and bearerToken', () => {
-            initializeEncryption();
-            const publicKeyPem = getPublicKey();
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+        it('should initialize Farcaster with encrypted apiKey and bearerToken', async () => {
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
 
             // Original secrets
             const apiKey = 'farcaster-api-key-abc123';
@@ -233,12 +228,10 @@ describe('Minting Canister Encryption Module', () => {
             const farcasterAPIURL = 'https://api.warpcast.com';
 
             // Encrypt secrets
-            const encryptedApiKey = forge.util.encode64(
-                publicKey.encrypt(apiKey, 'RSA-OAEP')
-            );
-            const encryptedBearerToken = forge.util.encode64(
-                publicKey.encrypt(bearerToken, 'RSA-OAEP')
-            );
+            const randomBytes1 = getRandomBytes(44);
+            const randomBytes2 = getRandomBytes(44);
+            const encryptedApiKey = encryptSecret(apiKey, publicKeyHex, randomBytes1);
+            const encryptedBearerToken = encryptSecret(bearerToken, publicKeyHex, randomBytes2);
 
             // Decrypt and initialize (simulating canister behavior)
             const decryptedApiKey = decryptSecret(encryptedApiKey);
@@ -258,10 +251,9 @@ describe('Minting Canister Encryption Module', () => {
             expect(decryptedBearerToken).toBe(bearerToken);
         });
 
-        it('should handle full Farcaster initialization flow with encryption', () => {
-            initializeEncryption();
-            const publicKeyPem = getPublicKey();
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+        it('should handle full Farcaster initialization flow with encryption', async () => {
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
 
             const secrets = {
                 apiKey: 'api-key-123',
@@ -269,13 +261,11 @@ describe('Minting Canister Encryption Module', () => {
             };
 
             // Step 1: Encrypt secrets on client side
+            const randomBytes1 = getRandomBytes(44);
+            const randomBytes2 = getRandomBytes(44);
             const encryptedSecrets = {
-                apiKeyEncrypted: forge.util.encode64(
-                    publicKey.encrypt(secrets.apiKey, 'RSA-OAEP')
-                ),
-                bearerTokenEncrypted: forge.util.encode64(
-                    publicKey.encrypt(secrets.bearerToken, 'RSA-OAEP')
-                ),
+                apiKeyEncrypted: encryptSecret(secrets.apiKey, publicKeyHex, randomBytes1),
+                bearerTokenEncrypted: encryptSecret(secrets.bearerToken, publicKeyHex, randomBytes2),
             };
 
             // Step 2: Decrypt on canister side (simulating canister behavior)
@@ -296,17 +286,15 @@ describe('Minting Canister Encryption Module', () => {
             expect(decryptedBearerToken).toBe(secrets.bearerToken);
         });
 
-        it('should handle Farcaster initialization with only apiKey (no bearerToken)', () => {
-            initializeEncryption();
-            const publicKeyPem = getPublicKey();
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+        it('should handle Farcaster initialization with only apiKey (no bearerToken)', async () => {
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
 
             const apiKey = 'api-key-only-123';
 
             // Encrypt apiKey
-            const encryptedApiKey = forge.util.encode64(
-                publicKey.encrypt(apiKey, 'RSA-OAEP')
-            );
+            const randomBytes = getRandomBytes(44);
+            const encryptedApiKey = encryptSecret(apiKey, publicKeyHex, randomBytes);
 
             // Decrypt and initialize
             const decryptedApiKey = decryptSecret(encryptedApiKey);
@@ -325,24 +313,21 @@ describe('Minting Canister Encryption Module', () => {
     });
 
     describe('Full encryption/decryption flow for both services', () => {
-        it('should work end-to-end for Twitter: encrypt on client, decrypt on canister', () => {
+        it('should work end-to-end for Twitter: encrypt on client, decrypt on canister', async () => {
             // Step 1: Initialize encryption on canister
-            initializeEncryption();
+            await initializeEncryption();
 
             // Step 2: Get public key (simulating encryptionPublicKey() call)
-            const publicKeyPem = getPublicKey();
+            const publicKeyHex = getPublicKey();
 
             // Step 3: Client encrypts secrets using public key
             const bearerToken = 'twitter-bearer-token-abc123';
             const secretKey = 'optimized-api-secret-key-xyz789';
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
 
-            const encryptedBearerToken = forge.util.encode64(
-                publicKey.encrypt(bearerToken, 'RSA-OAEP')
-            );
-            const encryptedSecretKey = forge.util.encode64(
-                publicKey.encrypt(secretKey, 'RSA-OAEP')
-            );
+            const randomBytes1 = getRandomBytes(44);
+            const randomBytes2 = getRandomBytes(44);
+            const encryptedBearerToken = encryptSecret(bearerToken, publicKeyHex, randomBytes1);
+            const encryptedSecretKey = encryptSecret(secretKey, publicKeyHex, randomBytes2);
 
             // Step 4: Canister decrypts the secrets
             const decryptedBearerToken = decryptSecret(encryptedBearerToken);
@@ -353,24 +338,21 @@ describe('Minting Canister Encryption Module', () => {
             expect(decryptedSecretKey).toBe(secretKey);
         });
 
-        it('should work end-to-end for Farcaster: encrypt on client, decrypt on canister', () => {
+        it('should work end-to-end for Farcaster: encrypt on client, decrypt on canister', async () => {
             // Step 1: Initialize encryption on canister
-            initializeEncryption();
+            await initializeEncryption();
 
             // Step 2: Get public key (simulating encryptionPublicKey() call)
-            const publicKeyPem = getPublicKey();
+            const publicKeyHex = getPublicKey();
 
             // Step 3: Client encrypts secrets using public key
             const apiKey = 'farcaster-api-key-abc123';
             const bearerToken = 'farcaster-bearer-token-xyz789';
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
 
-            const encryptedApiKey = forge.util.encode64(
-                publicKey.encrypt(apiKey, 'RSA-OAEP')
-            );
-            const encryptedBearerToken = forge.util.encode64(
-                publicKey.encrypt(bearerToken, 'RSA-OAEP')
-            );
+            const randomBytes1 = getRandomBytes(44);
+            const randomBytes2 = getRandomBytes(44);
+            const encryptedApiKey = encryptSecret(apiKey, publicKeyHex, randomBytes1);
+            const encryptedBearerToken = encryptSecret(bearerToken, publicKeyHex, randomBytes2);
 
             // Step 4: Canister decrypts the secrets
             const decryptedApiKey = decryptSecret(encryptedApiKey);
@@ -381,10 +363,9 @@ describe('Minting Canister Encryption Module', () => {
             expect(decryptedBearerToken).toBe(bearerToken);
         });
 
-        it('should handle multiple sequential encryptions/decryptions for both services', () => {
-            initializeEncryption();
-            const publicKeyPem = getPublicKey();
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+        it('should handle multiple sequential encryptions/decryptions for both services', async () => {
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
 
             const twitterSecrets = [
                 { bearerToken: 'token1', secretKey: 'key1' },
@@ -400,12 +381,10 @@ describe('Minting Canister Encryption Module', () => {
 
             // Test Twitter secrets
             for (const secret of twitterSecrets) {
-                const encryptedBearerToken = forge.util.encode64(
-                    publicKey.encrypt(secret.bearerToken, 'RSA-OAEP')
-                );
-                const encryptedSecretKey = forge.util.encode64(
-                    publicKey.encrypt(secret.secretKey, 'RSA-OAEP')
-                );
+                const randomBytes1 = getRandomBytes(44);
+                const randomBytes2 = getRandomBytes(44);
+                const encryptedBearerToken = encryptSecret(secret.bearerToken, publicKeyHex, randomBytes1);
+                const encryptedSecretKey = encryptSecret(secret.secretKey, publicKeyHex, randomBytes2);
 
                 const decryptedBearerToken = decryptSecret(encryptedBearerToken);
                 const decryptedSecretKey = decryptSecret(encryptedSecretKey);
@@ -416,12 +395,10 @@ describe('Minting Canister Encryption Module', () => {
 
             // Test Farcaster secrets
             for (const secret of farcasterSecrets) {
-                const encryptedApiKey = forge.util.encode64(
-                    publicKey.encrypt(secret.apiKey, 'RSA-OAEP')
-                );
-                const encryptedBearerToken = forge.util.encode64(
-                    publicKey.encrypt(secret.bearerToken, 'RSA-OAEP')
-                );
+                const randomBytes1 = getRandomBytes(44);
+                const randomBytes2 = getRandomBytes(44);
+                const encryptedApiKey = encryptSecret(secret.apiKey, publicKeyHex, randomBytes1);
+                const encryptedBearerToken = encryptSecret(secret.bearerToken, publicKeyHex, randomBytes2);
 
                 const decryptedApiKey = decryptSecret(encryptedApiKey);
                 const decryptedBearerToken = decryptSecret(encryptedBearerToken);

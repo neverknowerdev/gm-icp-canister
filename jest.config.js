@@ -1,5 +1,5 @@
+/** @type {import('jest').Config} */
 module.exports = {
-  preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
@@ -14,11 +14,26 @@ module.exports = {
   coverageDirectory: 'coverage',
   verbose: true,
   transform: {
+    // Use ts-jest for TypeScript files
     '^.+\\.ts$': ['ts-jest', {
       tsconfig: {
+        target: 'ES2020',
+        module: 'CommonJS',
+        moduleResolution: 'node',
         esModuleInterop: true,
+        strict: false,
+        skipLibCheck: true,
       },
     }],
+    // Use babel-jest for noble packages (ESM to CJS)
+    'node_modules/@noble/.+\\.js$': ['babel-jest', {
+      presets: [
+        ['@babel/preset-env', { targets: { node: 'current' } }]
+      ],
+    }],
   },
+  // Transform noble packages from ESM to CJS
+  transformIgnorePatterns: [
+    'node_modules/(?!(@noble)/)',
+  ],
 };
-

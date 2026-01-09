@@ -70,7 +70,7 @@ describe('Smart Contract Utilities', () => {
         it('should handle errors gracefully', async () => {
             // The function already has try-catch, so we need to mock console.error
             const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-            
+
             // Since callCreateUser has try-catch, we can't easily mock it to throw
             // The actual implementation already handles errors internally
             // This test verifies that errors don't propagate
@@ -122,7 +122,7 @@ describe('Smart Contract Utilities', () => {
 
             // The function already has try-catch, so we need to mock console.error
             const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-            
+
             // Since callAddUser has try-catch, we can't easily mock it to throw
             // The actual implementation already handles errors internally
             // This test verifies that errors don't propagate

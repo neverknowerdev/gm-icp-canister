@@ -2,12 +2,19 @@ import {
     initializeEncryption,
     getPublicKey,
     decryptSecret,
+    encryptSecret,
+    isEncryptionInitialized,
 } from '../../src/gm-account-manager-canister/encryption';
 import { clearMockStorageById } from '../mocks/azle.mock';
-import * as forge from 'node-forge';
+import * as crypto from 'crypto';
 
 // Encryption module uses memory ID 8
 const ENCRYPTION_STORAGE_ID = 8;
+
+// Helper to generate random bytes for testing
+function getRandomBytes(size: number): Uint8Array {
+    return new Uint8Array(crypto.randomBytes(size));
+}
 
 // Reset storage before each test
 beforeEach(() => {
@@ -16,154 +23,198 @@ beforeEach(() => {
 
 describe('Encryption Module', () => {
     describe('initializeEncryption', () => {
-        it('should generate and store RSA key pair', () => {
-            initializeEncryption();
+        it('should generate and store X25519 key pair', async () => {
+            await initializeEncryption();
 
             const publicKey = getPublicKey();
             expect(publicKey).toBeDefined();
-            expect(publicKey).toContain('-----BEGIN PUBLIC KEY-----');
-            expect(publicKey).toContain('-----END PUBLIC KEY-----');
+            // X25519 public key is 32 bytes = 64 hex chars
+            expect(publicKey).toHaveLength(64);
+            expect(/^[0-9a-f]+$/.test(publicKey)).toBe(true);
         });
 
-        it('should not regenerate keys if they already exist', () => {
-            initializeEncryption();
+        it('should not regenerate keys if they already exist', async () => {
+            await initializeEncryption();
             const firstPublicKey = getPublicKey();
 
             // Initialize again
-            initializeEncryption();
+            await initializeEncryption();
             const secondPublicKey = getPublicKey();
 
             // Should be the same key
             expect(firstPublicKey).toBe(secondPublicKey);
         });
+
+        it('should set isEncryptionInitialized to true', async () => {
+            expect(isEncryptionInitialized()).toBe(false);
+            await initializeEncryption();
+            expect(isEncryptionInitialized()).toBe(true);
+        });
     });
 
     describe('getPublicKey', () => {
-        it('should return public key in PEM format', () => {
-            initializeEncryption();
+        it('should return public key as hex string', async () => {
+            await initializeEncryption();
             const publicKey = getPublicKey();
 
             expect(publicKey).toBeDefined();
-            expect(publicKey).toContain('-----BEGIN PUBLIC KEY-----');
-            expect(publicKey).toContain('-----END PUBLIC KEY-----');
-
-            // Verify it's a valid PEM public key
-            const publicKeyObj = forge.pki.publicKeyFromPem(publicKey);
-            expect(publicKeyObj).toBeDefined();
+            // X25519 public key is 32 bytes = 64 hex chars
+            expect(publicKey).toHaveLength(64);
+            expect(/^[0-9a-f]+$/.test(publicKey)).toBe(true);
         });
 
-        it('should auto-initialize if keys do not exist', () => {
-            // Don't call initializeEncryption first
-            const publicKey = getPublicKey();
-
-            expect(publicKey).toBeDefined();
-            expect(publicKey).toContain('-----BEGIN PUBLIC KEY-----');
+        it('should throw if keys are not initialized', () => {
+            expect(() => getPublicKey()).toThrow('Encryption not initialized');
         });
     });
 
     describe('decryptSecret', () => {
-        it('should decrypt a secret that was encrypted with the public key', () => {
+        it('should decrypt a secret that was encrypted with the public key', async () => {
             // Initialize encryption
-            initializeEncryption();
-            const publicKeyPem = getPublicKey();
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
 
             // Original secret
             const originalSecret = 'my-super-secret-api-key-12345';
 
-            // Encrypt using the public key (simulating client-side encryption)
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
-            const encryptedBytes = publicKey.encrypt(originalSecret, 'RSA-OAEP');
-            const encryptedBase64 = forge.util.encode64(encryptedBytes);
+            // Encrypt using the encryptSecret function with random bytes
+            const randomBytes = getRandomBytes(44);
+            const encryptedHex = encryptSecret(originalSecret, publicKeyHex, randomBytes);
 
             // Decrypt using the canister's decryptSecret function
-            const decryptedSecret = decryptSecret(encryptedBase64);
+            const decryptedSecret = decryptSecret(encryptedHex);
 
             // Should match the original
             expect(decryptedSecret).toBe(originalSecret);
         });
 
-        it('should handle different secret values', () => {
-            initializeEncryption();
-            const publicKeyPem = getPublicKey();
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+        it('should handle different secret values', async () => {
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
 
-            // RSA-OAEP with 2048-bit key can encrypt up to ~214 bytes
-            // Test various secret types within this limit
+            // Test various secret types
             const testSecrets = [
                 'simple-secret',
                 'medium-length-secret-12345',
                 'secret-with-special-chars!@#$%',
+                'unicode-secret-🔐🔑',
+                'a'.repeat(100), // Longer secret
             ];
 
             for (const originalSecret of testSecrets) {
-                const encryptedBytes = publicKey.encrypt(originalSecret, 'RSA-OAEP');
-                const encryptedBase64 = forge.util.encode64(encryptedBytes);
-                const decryptedSecret = decryptSecret(encryptedBase64);
+                const randomBytes = getRandomBytes(44);
+                const encryptedHex = encryptSecret(originalSecret, publicKeyHex, randomBytes);
+                const decryptedSecret = decryptSecret(encryptedHex);
 
                 expect(decryptedSecret).toBe(originalSecret);
             }
         });
 
-
-        it('should auto-initialize if keys do not exist', () => {
-            // Don't call initializeEncryption first
-            const publicKeyPem = getPublicKey();
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
-
-            const originalSecret = 'test-secret';
-            const encryptedBytes = publicKey.encrypt(originalSecret, 'RSA-OAEP');
-            const encryptedBase64 = forge.util.encode64(encryptedBytes);
-
-            const decryptedSecret = decryptSecret(encryptedBase64);
-            expect(decryptedSecret).toBe(originalSecret);
+        it('should throw error if encryption not initialized', () => {
+            expect(() => {
+                decryptSecret('deadbeef');
+            }).toThrow('Encryption not initialized');
         });
 
-        it('should throw error for invalid encrypted data', () => {
-            initializeEncryption();
+        it('should throw error for invalid encrypted data', async () => {
+            await initializeEncryption();
 
             expect(() => {
-                decryptSecret('invalid-base64-encrypted-data!!!');
+                decryptSecret('invalid-hex-data!!!');
             }).toThrow();
         });
 
-        it('should throw error for corrupted encrypted data', () => {
-            initializeEncryption();
+        it('should throw error for corrupted encrypted data', async () => {
+            await initializeEncryption();
 
-            // Valid base64 but not valid encrypted data
-            const invalidBytes = forge.util.createBuffer(new Uint8Array([1, 2, 3, 4, 5]));
-            const invalidBase64 = forge.util.encode64(invalidBytes.getBytes());
+            // Valid hex but wrong size/format
+            const invalidHex = '0102030405';
 
             expect(() => {
-                decryptSecret(invalidBase64);
+                decryptSecret(invalidHex);
+            }).toThrow();
+        });
+
+        it('should throw error for tampered ciphertext', async () => {
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
+
+            const originalSecret = 'test-secret';
+            const randomBytes = getRandomBytes(44);
+            const encryptedHex = encryptSecret(originalSecret, publicKeyHex, randomBytes);
+
+            // Tamper with the ciphertext (flip a bit in the middle)
+            const tamperedHex = encryptedHex.slice(0, 100) + 'ff' + encryptedHex.slice(102);
+
+            expect(() => {
+                decryptSecret(tamperedHex);
             }).toThrow();
         });
     });
 
+    describe('encryptSecret', () => {
+        it('should encrypt a secret deterministically with same randomness', async () => {
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
+
+            const secret = 'test-secret';
+            const randomBytes = getRandomBytes(44);
+
+            const encrypted1 = encryptSecret(secret, publicKeyHex, randomBytes);
+            const encrypted2 = encryptSecret(secret, publicKeyHex, randomBytes);
+
+            // Same randomness should produce same ciphertext
+            expect(encrypted1).toBe(encrypted2);
+        });
+
+        it('should produce different ciphertext with different randomness', async () => {
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
+
+            const secret = 'test-secret';
+            const randomBytes1 = getRandomBytes(44);
+            const randomBytes2 = getRandomBytes(44);
+
+            const encrypted1 = encryptSecret(secret, publicKeyHex, randomBytes1);
+            const encrypted2 = encryptSecret(secret, publicKeyHex, randomBytes2);
+
+            // Different randomness should produce different ciphertext
+            expect(encrypted1).not.toBe(encrypted2);
+        });
+
+        it('should throw if not enough random bytes provided', async () => {
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
+
+            expect(() => {
+                encryptSecret('test', publicKeyHex, new Uint8Array(10));
+            }).toThrow('Need at least 44 bytes of randomness');
+        });
+    });
+
     describe('Full encryption/decryption flow', () => {
-        it('should work end-to-end: encrypt on client, decrypt on canister', () => {
+        it('should work end-to-end: encrypt on client, decrypt on canister', async () => {
             // Step 1: Initialize encryption on canister
-            initializeEncryption();
+            await initializeEncryption();
 
             // Step 2: Get public key (simulating encryptionPublicKey() call)
-            const publicKeyPem = getPublicKey();
+            const publicKeyHex = getPublicKey();
 
             // Step 3: Client encrypts secret using public key
             const clientSecret = 'twitter-client-secret-abc123';
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
-            const encryptedBytes = publicKey.encrypt(clientSecret, 'RSA-OAEP');
-            const encryptedBase64 = forge.util.encode64(encryptedBytes);
+            const randomBytes = getRandomBytes(44);
+            const encryptedHex = encryptSecret(clientSecret, publicKeyHex, randomBytes);
 
             // Step 4: Canister decrypts the secret
-            const decryptedSecret = decryptSecret(encryptedBase64);
+            const decryptedSecret = decryptSecret(encryptedHex);
 
             // Step 5: Verify they match
             expect(decryptedSecret).toBe(clientSecret);
         });
 
-        it('should handle multiple sequential encryptions/decryptions', () => {
-            initializeEncryption();
-            const publicKeyPem = getPublicKey();
-            const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+        it('should handle multiple sequential encryptions/decryptions', async () => {
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
 
             const secrets = [
                 'secret1',
@@ -172,12 +223,30 @@ describe('Encryption Module', () => {
             ];
 
             for (const secret of secrets) {
-                const encryptedBytes = publicKey.encrypt(secret, 'RSA-OAEP');
-                const encryptedBase64 = forge.util.encode64(encryptedBytes);
-                const decrypted = decryptSecret(encryptedBase64);
+                const randomBytes = getRandomBytes(44);
+                const encryptedHex = encryptSecret(secret, publicKeyHex, randomBytes);
+                const decrypted = decryptSecret(encryptedHex);
 
                 expect(decrypted).toBe(secret);
             }
+        });
+
+        it('should handle JSON secrets', async () => {
+            await initializeEncryption();
+            const publicKeyHex = getPublicKey();
+
+            const jsonSecret = JSON.stringify({
+                apiKey: 'my-api-key',
+                apiSecret: 'my-api-secret',
+                nested: { value: 123 }
+            });
+
+            const randomBytes = getRandomBytes(44);
+            const encryptedHex = encryptSecret(jsonSecret, publicKeyHex, randomBytes);
+            const decrypted = decryptSecret(encryptedHex);
+
+            expect(decrypted).toBe(jsonSecret);
+            expect(JSON.parse(decrypted)).toEqual(JSON.parse(jsonSecret));
         });
     });
 });

@@ -25,6 +25,7 @@ declare module 'azle' {
     export function call(canisterId: any, method: string, options: any): Promise<any>;
     export const ic: {
         id(): Principal;
+        rawRand(): Promise<Uint8Array>;
     };
 }
 
@@ -33,6 +34,7 @@ declare global {
     var ic: {
         id(): Principal;
         setTimer(timestamp: bigint): void;
+        rawRand(): Promise<Uint8Array>;
     };
 }
 

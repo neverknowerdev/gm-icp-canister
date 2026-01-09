@@ -6,7 +6,7 @@
  * This script:
  * 1. Deploys the account-manager canister
  * 2. Gets the encryption public key from the canister
- * 3. Encrypts Twitter and Farcaster secrets using the public key
+ * 3. Encrypts Twitter and Farcaster secrets using X25519 + AES-GCM
  * 4. Calls setTwitterConfig and setFarcasterConfig with encrypted secrets
  * 
  * Usage:
@@ -31,12 +31,19 @@
  */
 
 import { execSync } from 'child_process';
-import * as forge from 'node-forge';
+import * as crypto from 'crypto';
+import { x25519 } from '@noble/curves/ed25519.js';
+import { gcm } from '@noble/ciphers/aes.js';
+import { hkdf } from '@noble/hashes/hkdf.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 
 // Configuration
 const CANISTER_NAME = 'gm-account-manager-canister';
 const DEFAULT_NETWORK = 'ic';
 const DEFAULT_IDENTITY = 'mainnet';
+
+// Constants for encryption
+const HKDF_INFO = new TextEncoder().encode('gm-canister-encryption-v1');
 
 // Get command line arguments
 const network = process.argv[2] || DEFAULT_NETWORK;
@@ -48,6 +55,24 @@ const TWITTER_CLIENT_SECRET = process.env.TWITTER_CLIENT_SECRET;
 const TWITTER_REDIRECT_URI = process.env.TWITTER_REDIRECT_URI;
 const FARCASTER_API_KEY = process.env.FARCASTER_API_KEY;
 const FARCASTER_API_URL = process.env.FARCASTER_API_URL || 'https://api.warpcast.com';
+
+// Utility functions for hex encoding/decoding
+function bytesToHex(bytes: Uint8Array): string {
+    return Array.from(bytes)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+}
+
+function hexToBytes(hex: string): Uint8Array {
+    if (hex.length % 2 !== 0) {
+        throw new Error('Invalid hex string');
+    }
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    }
+    return bytes;
+}
 
 // Validate required environment variables
 function validateEnvVars(): void {
@@ -114,6 +139,7 @@ function deployCanister(): void {
 
 /**
  * Get the encryption public key from the canister
+ * Returns the public key as hex string
  */
 function getPublicKey(): string {
     console.log('🔑 Getting encryption public key from canister...');
@@ -123,8 +149,8 @@ function getPublicKey(): string {
             `dfx canister call --network ${network} --identity ${identity} ${CANISTER_NAME} encryptionPublicKey`
         );
 
-        // Parse the response - dfx returns format like: ("-----BEGIN PUBLIC KEY-----\n...")
-        // Remove parentheses and quotes, handle escaped newlines
+        // Parse the response - dfx returns format like: ("aabbccdd...")
+        // Remove parentheses and quotes
         let parsed = publicKey.trim();
 
         // Remove outer parentheses if present
@@ -137,15 +163,13 @@ function getPublicKey(): string {
             parsed = parsed.slice(1, -1);
         }
 
-        // Replace escaped newlines with actual newlines
-        parsed = parsed.replace(/\\n/g, '\n');
-
-        if (!parsed.includes('BEGIN PUBLIC KEY')) {
-            throw new Error('Invalid public key format received from canister');
+        // Validate it's a valid hex string (64 chars for X25519 public key)
+        if (!/^[0-9a-f]{64}$/i.test(parsed)) {
+            throw new Error(`Invalid public key format received: ${parsed}`);
         }
 
         console.log('✅ Public key retrieved');
-        return parsed;
+        return parsed.toLowerCase();
     } catch (error: any) {
         console.error('❌ Failed to get public key:', error.message);
         throw error;
@@ -153,13 +177,40 @@ function getPublicKey(): string {
 }
 
 /**
- * Encrypt a secret using the public key
+ * Encrypt a secret using X25519 + AES-256-GCM
+ * @param secret - The secret to encrypt
+ * @param recipientPublicKeyHex - The recipient's X25519 public key as hex string
+ * @returns Hex-encoded encrypted payload: ephemeralPublicKey || nonce || ciphertext
  */
-function encryptSecret(secret: string, publicKeyPem: string): string {
+function encryptSecret(secret: string, recipientPublicKeyHex: string): string {
     try {
-        const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
-        const encryptedBytes = publicKey.encrypt(secret, 'RSA-OAEP');
-        return forge.util.encode64(encryptedBytes);
+        const recipientPublicKey = hexToBytes(recipientPublicKeyHex);
+
+        // Generate ephemeral keypair using Node.js crypto
+        const ephemeralPrivateKey = new Uint8Array(crypto.randomBytes(32));
+        const nonce = new Uint8Array(crypto.randomBytes(12));
+
+        // Generate ephemeral public key
+        const ephemeralPublicKey = x25519.getPublicKey(ephemeralPrivateKey);
+
+        // Derive shared secret using X25519 ECDH
+        const sharedSecret = x25519.getSharedSecret(ephemeralPrivateKey, recipientPublicKey);
+
+        // Derive AES key using HKDF-SHA256
+        const aesKey = hkdf(sha256, sharedSecret, undefined, HKDF_INFO, 32);
+
+        // Encrypt using AES-256-GCM
+        const plaintextBytes = new TextEncoder().encode(secret);
+        const aesGcm = gcm(aesKey, nonce);
+        const ciphertext = aesGcm.encrypt(plaintextBytes);
+
+        // Combine: ephemeralPublicKey || nonce || ciphertext
+        const result = new Uint8Array(ephemeralPublicKey.length + nonce.length + ciphertext.length);
+        result.set(ephemeralPublicKey, 0);
+        result.set(nonce, ephemeralPublicKey.length);
+        result.set(ciphertext, ephemeralPublicKey.length + nonce.length);
+
+        return bytesToHex(result);
     } catch (error: any) {
         console.error('❌ Encryption failed:', error.message);
         throw error;
@@ -169,10 +220,10 @@ function encryptSecret(secret: string, publicKeyPem: string): string {
 /**
  * Set Twitter configuration with encrypted secrets
  */
-function setTwitterConfig(publicKeyPem: string): void {
+function setTwitterConfig(publicKeyHex: string): void {
     console.log('🔐 Encrypting Twitter secrets...');
 
-    const encryptedClientSecret = encryptSecret(TWITTER_CLIENT_SECRET!, publicKeyPem);
+    const encryptedClientSecret = encryptSecret(TWITTER_CLIENT_SECRET!, publicKeyHex);
 
     console.log('📝 Setting Twitter configuration...');
 
@@ -205,10 +256,10 @@ function setTwitterConfig(publicKeyPem: string): void {
 /**
  * Set Farcaster configuration with encrypted secrets
  */
-function setFarcasterConfig(publicKeyPem: string): void {
+function setFarcasterConfig(publicKeyHex: string): void {
     console.log('🔐 Encrypting Farcaster secrets...');
 
-    const encryptedApiKey = encryptSecret(FARCASTER_API_KEY!, publicKeyPem);
+    const encryptedApiKey = encryptSecret(FARCASTER_API_KEY!, publicKeyHex);
 
     console.log('📝 Setting Farcaster configuration...');
 
