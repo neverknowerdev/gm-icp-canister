@@ -10,6 +10,9 @@ import { dateStringToMintingTimestamp } from './utils/dateUtils';
 import { getEthereumAddress } from './utils/thresholdSigning';
 import { processAllErrors } from './minting/globalRetryWorker';
 import { scheduleRetryWorker, resetRetryCount } from './minting/retryScheduler';
+import { initializeEncryption, getPublicKey, decryptSecret } from './encryption';
+import { initializeFarcaster } from './workers/farcaster/process';
+import { FarcasterSecrets } from './workers/farcaster/farcasterRequester';
 
 export default class {
     constructor() {
@@ -19,6 +22,13 @@ export default class {
             initializeMintingScheduler();
         } catch (error: any) {
             console.error(`Error initializing minting scheduler: ${error}`);
+        }
+
+        // Initialize encryption key pair on canister creation
+        try {
+            initializeEncryption();
+        } catch (error: any) {
+            console.error(`Error initializing encryption: ${error}`);
         }
     }
 
@@ -50,7 +60,7 @@ export default class {
         console.log('Retry worker callback fired - processing errors...');
         try {
             const success = await processAllErrors();
-            
+
             if (!success) {
                 // Errors still exist, schedule next retry
                 console.log('Errors still exist, scheduling next retry...');
@@ -71,19 +81,38 @@ export default class {
     /**
      * Initialize Twitter configuration
      * Sets up Twitter API secrets and URLs
+     * bearerTokenEncrypted and optimizedAPISecretKeyEncrypted should be encrypted using the canister's public key (from encryptionPublicKey())
      */
     @update([IDL.Record({
-        bearerToken: IDL.Text,
-        optimizedAPISecretKey: IDL.Text,
+        bearerTokenEncrypted: IDL.Text,
+        optimizedAPISecretKeyEncrypted: IDL.Text,
         authHeaderName: IDL.Text,
     }), IDL.Text, IDL.Text], IDL.Null)
     initializeTwitter(
-        secrets: TwitterSecrets,
+        secrets: { bearerTokenEncrypted: string; optimizedAPISecretKeyEncrypted: string; authHeaderName: string },
         tweetLookupURL: string,
         twitterOptimizedServerHost: string
     ): null {
-        initializeTwitter(secrets, tweetLookupURL, twitterOptimizedServerHost);
-        console.log('Twitter initialized successfully');
+        try {
+            // Decrypt the secrets
+            const bearerToken = decryptSecret(secrets.bearerTokenEncrypted);
+            const optimizedAPISecretKey = decryptSecret(secrets.optimizedAPISecretKeyEncrypted);
+
+            // Pass decrypted values to init function
+            initializeTwitter(
+                {
+                    bearerToken,
+                    optimizedAPISecretKey,
+                    authHeaderName: secrets.authHeaderName,
+                },
+                tweetLookupURL,
+                twitterOptimizedServerHost
+            );
+            console.log('Twitter initialized successfully');
+        } catch (error: any) {
+            console.error(`Error initializing Twitter: ${error}`);
+            throw new Error(`Failed to initialize Twitter: ${error.message || error}`);
+        }
         return null;
     }
 
@@ -240,5 +269,57 @@ export default class {
             console.error(`Error getting canister EVM wallet address: ${error}`);
             throw new Error(`Failed to get EVM wallet address: ${error.message || error}`);
         }
+    }
+
+    /**
+     * Get the RSA public key for encryption
+     * Clients can use this public key to encrypt sensitive parameters before sending them to the canister
+     * @returns RSA public key in PEM format
+     */
+    @query([], IDL.Text)
+    encryptionPublicKey(): string {
+        try {
+            return getPublicKey();
+        } catch (error: any) {
+            console.error(`Error getting encryption public key: ${error}`);
+            throw new Error(`Failed to get encryption public key: ${error.message || error}`);
+        }
+    }
+
+    /**
+     * Initialize Farcaster configuration
+     * Sets up Farcaster API secrets and URLs
+     * apiKeyEncrypted and bearerTokenEncrypted (if provided) should be encrypted using the canister's public key (from encryptionPublicKey())
+     */
+    @update([IDL.Record({
+        apiKeyEncrypted: IDL.Text,
+        bearerTokenEncrypted: IDL.Opt(IDL.Text),
+    }), IDL.Text], IDL.Null)
+    initializeFarcaster(
+        secrets: { apiKeyEncrypted: string; bearerTokenEncrypted?: string },
+        farcasterAPIURL: string
+    ): null {
+        try {
+            // Decrypt the secrets
+            const apiKey = decryptSecret(secrets.apiKeyEncrypted);
+            let bearerToken: string | undefined = undefined;
+            if (secrets.bearerTokenEncrypted) {
+                bearerToken = decryptSecret(secrets.bearerTokenEncrypted);
+            }
+
+            // Pass decrypted values to init function
+            initializeFarcaster(
+                {
+                    apiKey,
+                    bearerToken,
+                },
+                farcasterAPIURL
+            );
+            console.log('Farcaster initialized successfully');
+        } catch (error: any) {
+            console.error(`Error initializing Farcaster: ${error}`);
+            throw new Error(`Failed to initialize Farcaster: ${error.message || error}`);
+        }
+        return null;
     }
 }

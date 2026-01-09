@@ -10,6 +10,7 @@ import { initFarcasterConfig } from './utils/farcasterVerification';
 import { Chain, CHAINS, isValidChain } from './utils/types';
 import { initializeCleanupScheduler, scheduleCleanup } from './storage/storageCleanerScheduler';
 import { cleanStorage } from './storage/storageCleaner';
+import { initializeEncryption, getPublicKey, decryptSecret } from './encryption';
 
 interface Config {
     contracts: {
@@ -34,6 +35,13 @@ export default class {
             initializeCleanupScheduler();
         } catch (error: any) {
             console.error(`Error initializing storage cleanup scheduler: ${error}`);
+        }
+
+        // Initialize encryption key pair on canister creation
+        try {
+            initializeEncryption();
+        } catch (error: any) {
+            console.error(`Error initializing encryption: ${error}`);
         }
     }
 
@@ -122,28 +130,55 @@ export default class {
 
     /**
      * Initialize Twitter API configuration for verification
+     * clientSecretEncrypted should be encrypted using the canister's public key (from encryptionPublicKey())
      */
     @update([IDL.Record({
         clientId: IDL.Text,
-        clientSecret: IDL.Text,
+        clientSecretEncrypted: IDL.Text,
         redirectUri: IDL.Text,
     })], IDL.Null)
-    setTwitterConfig(config: { clientId: string; clientSecret: string; redirectUri: string }): null {
-        initTwitterConfig(config);
-        console.log('Twitter API configuration updated successfully');
+    setTwitterConfig(config: { clientId: string; clientSecretEncrypted: string; redirectUri: string }): null {
+        try {
+            // Decrypt the client secret
+            const clientSecret = decryptSecret(config.clientSecretEncrypted);
+
+            // Pass decrypted values to init function
+            initTwitterConfig({
+                clientId: config.clientId,
+                clientSecret: clientSecret,
+                redirectUri: config.redirectUri,
+            });
+            console.log('Twitter API configuration updated successfully');
+        } catch (error: any) {
+            console.error(`Error setting Twitter config: ${error}`);
+            throw new Error(`Failed to set Twitter config: ${error.message || error}`);
+        }
         return null;
     }
 
     /**
      * Initialize Farcaster API configuration for verification
+     * apiKeyEncrypted should be encrypted using the canister's public key (from encryptionPublicKey())
      */
     @update([IDL.Record({
-        apiKey: IDL.Opt(IDL.Text),
+        apiKeyEncrypted: IDL.Text,
         apiUrl: IDL.Opt(IDL.Text),
     })], IDL.Null)
-    setFarcasterConfig(config: { apiKey?: string; apiUrl?: string }): null {
-        initFarcasterConfig(config);
-        console.log('Farcaster API configuration updated successfully');
+    setFarcasterConfig(config: { apiKeyEncrypted: string; apiUrl?: string }): null {
+        try {
+            // Decrypt the API key
+            const apiKey = decryptSecret(config.apiKeyEncrypted);
+
+            // Pass decrypted values to init function
+            initFarcasterConfig({
+                apiKey: apiKey,
+                apiUrl: config.apiUrl,
+            });
+            console.log('Farcaster API configuration updated successfully');
+        } catch (error: any) {
+            console.error(`Error setting Farcaster config: ${error}`);
+            throw new Error(`Failed to set Farcaster config: ${error.message || error}`);
+        }
         return null;
     }
 
@@ -326,6 +361,21 @@ export default class {
         } catch (error: any) {
             console.error(`Error getting EVM wallet address: ${error}`);
             throw new Error(`Failed to get EVM wallet address: ${error.message || error}`);
+        }
+    }
+
+    /**
+     * Get the RSA public key for encryption
+     * Clients can use this public key to encrypt sensitive parameters before sending them to the canister
+     * @returns RSA public key in PEM format
+     */
+    @query([], IDL.Text)
+    encryptionPublicKey(): string {
+        try {
+            return getPublicKey();
+        } catch (error: any) {
+            console.error(`Error getting encryption public key: ${error}`);
+            throw new Error(`Failed to get encryption public key: ${error.message || error}`);
         }
     }
 }
