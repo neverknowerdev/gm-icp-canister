@@ -7,10 +7,11 @@ import { initializeScanner, scheduleScanner } from './scanner/scannerScheduler';
 import { scanAllChains } from './scanner/transactionScanner';
 import { initTwitterConfig } from './verification/twitterVerification';
 import { initFarcasterConfig } from './verification/farcasterVerification';
-import { Chain, CHAINS, isValidChain } from './utils/types';
+import { Chain, isValidChain } from './utils/types';
 import { initializeCleanupScheduler, scheduleCleanup } from './storage/storageCleanerScheduler';
 import { cleanStorage } from './storage/storageCleaner';
 import { initializeEncryption, getPublicKey, decryptSecret } from './encryption';
+import { getTransactionStatus } from './storage/transactionTracker';
 
 interface ContractsConfig {
     contracts: {
@@ -375,6 +376,20 @@ export default class {
             console.error(`Error getting encryption public key: ${error}`);
             throw new Error(`Failed to get encryption public key: ${error.message || error}`);
         }
+    }
+
+    /**
+     * Get the processing status of a transaction
+     * @param chainId - The chain ID (e.g., 8453 for Base Mainnet)
+     * @param txHash - The transaction hash
+     * @returns Transaction status: 'processed', 'in_progress', or 'unprocessed'
+     */
+    @query([IDL.Nat32, IDL.Text], IDL.Text)
+    getTransactionStatus(chainId: Chain, txHash: string): string {
+        if (!isValidChain(chainId)) {
+            return 'unprocessed';
+        }
+        return getTransactionStatus(chainId, txHash);
     }
 }
 

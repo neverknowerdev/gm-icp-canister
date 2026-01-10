@@ -200,3 +200,25 @@ export function removeProcessedTransaction(chain: Chain, txHash: string): boolea
     return true;
 }
 
+/**
+ * Transaction status type
+ */
+export type TransactionStatus = 'processed' | 'in_progress' | 'unprocessed';
+
+/**
+ * Get the status of a transaction on a specific chain
+ * Returns:
+ * - 'processed' if the transaction has been fully processed
+ * - 'in_progress' if the transaction is currently being processed
+ * - 'unprocessed' if the transaction has not been processed yet
+ */
+export function getTransactionStatus(chain: Chain, txHash: string): TransactionStatus {
+    if (isTransactionProcessed(chain, txHash)) {
+        return 'processed';
+    }
+    if (isTransactionInProcessing(chain, txHash)) {
+        return 'in_progress';
+    }
+    return 'unprocessed';
+}
+
