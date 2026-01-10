@@ -1,8 +1,8 @@
 import { TransactionReceipt, ParsedEvent, Chain, chainName, BLOCKS_PER_DAY, TRANSACTION_MAX_AGE_DAYS } from './utils/types';
 import { fetchTransactionReceipt } from './evmContracts/evmRpc';
 import { extractEvents } from './evmContracts/eventDecoder';
-import { verifyTwitter } from './events/verifyTwitter';
-import { verifyFarcaster } from './events/verifyFarcaster';
+import { verifyTwitter } from './verification/verifyTwitter';
+import { verifyFarcaster } from './verification/verifyFarcaster';
 import { getContractAddresses } from './evmContracts/config';
 import {
     isTransactionProcessed,
@@ -11,7 +11,7 @@ import {
     markTransactionInProcessing,
     removeTransactionFromProcessing
 } from './storage/transactionTracker';
-import { processUserEvent } from './events/userEvents';
+import { processUserEvent } from './userEvents';
 import { getLastProcessedBlock, updateLastProcessedBlock } from './storage/blockTracker';
 
 // Event handler registry for verification request events

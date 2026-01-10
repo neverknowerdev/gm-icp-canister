@@ -1,7 +1,7 @@
 // Event Handlers for User-related events from smart contract
 // These events are processed AFTER the transaction that calls createOrUpdateUser
 
-import { ParsedEvent, Chain } from '../utils/types';
+import { ParsedEvent, Chain } from './utils/types';
 import {
     getUser,
     createUserWithId,
@@ -11,8 +11,8 @@ import {
     updateUserPrimaryWallet,
     removeUser,
     markUserAsVerified,
-} from '../userManagement/userStore';
-import { decodeEvent } from '../evmContracts/eventDecoder';
+} from './userManagement/userStore';
+import { decodeEvent } from './evmContracts/eventDecoder';
 
 /**
  * Build topics array from ParsedEvent args

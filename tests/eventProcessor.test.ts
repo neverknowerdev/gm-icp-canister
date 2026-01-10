@@ -3,19 +3,19 @@ import * as evmRpc from '../src/gm-account-manager-canister/evmContracts/evmRpc'
 import * as eventDecoder from '../src/gm-account-manager-canister/evmContracts/eventDecoder';
 import * as config from '../src/gm-account-manager-canister/evmContracts/config';
 import { TransactionReceipt, ParsedEvent, CHAIN_BASE_MAINNET } from '../src/gm-account-manager-canister/utils/types';
-import * as verifyTwitter from '../src/gm-account-manager-canister/events/verifyTwitter';
-import * as verifyFarcaster from '../src/gm-account-manager-canister/events/verifyFarcaster';
+import * as verifyTwitter from '../src/gm-account-manager-canister/verification/verifyTwitter';
+import * as verifyFarcaster from '../src/gm-account-manager-canister/verification/verifyFarcaster';
 import * as transactionTracker from '../src/gm-account-manager-canister/storage/transactionTracker';
-import * as userEvents from '../src/gm-account-manager-canister/events/userEvents';
+import * as userEvents from '../src/gm-account-manager-canister/userEvents';
 
 // Mock dependencies
 jest.mock('../src/gm-account-manager-canister/evmContracts/evmRpc');
 jest.mock('../src/gm-account-manager-canister/evmContracts/eventDecoder');
 jest.mock('../src/gm-account-manager-canister/evmContracts/config');
-jest.mock('../src/gm-account-manager-canister/events/verifyTwitter');
-jest.mock('../src/gm-account-manager-canister/events/verifyFarcaster');
+jest.mock('../src/gm-account-manager-canister/verification/verifyTwitter');
+jest.mock('../src/gm-account-manager-canister/verification/verifyFarcaster');
 jest.mock('../src/gm-account-manager-canister/storage/transactionTracker');
-jest.mock('../src/gm-account-manager-canister/events/userEvents');
+jest.mock('../src/gm-account-manager-canister/userEvents');
 
 describe('Event Processor', () => {
     const mockReceipt: TransactionReceipt = {
@@ -165,7 +165,7 @@ describe('Event Processor', () => {
         (eventDecoder.extractEvents as jest.Mock).mockReturnValue(mockEvents);
 
         // Mock handler to throw error
-        jest.spyOn(require('../src/gm-account-manager-canister/events/verifyTwitter'), 'verifyTwitter').mockRejectedValue(
+        jest.spyOn(require('../src/gm-account-manager-canister/verification/verifyTwitter'), 'verifyTwitter').mockRejectedValue(
             new Error('Handler error')
         );
 

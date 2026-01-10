@@ -1,26 +1,26 @@
 import { ParsedEvent, Chain } from '../utils/types';
-import {
-    getUserByFarcasterId,
-} from '../userManagement/userStore';
+import { getUserByFarcasterId } from '../userManagement/userStore';
+import { verifyFarcasterAuthBigInt } from './farcasterVerification';
 import { callCreateOrUpdateUser } from '../evmContracts/smartContract';
 import { getContracts, getContractAddresses } from '../evmContracts/config';
 import { generateNextUserId } from '../storage/atomicCounter';
 import { fetchTransactionReceipt } from '../evmContracts/evmRpc';
 import { extractEvents } from '../evmContracts/eventDecoder';
-import { processUserEvent } from './userEvents';
-import { verifyFarcasterAuthBigInt } from '../verification/farcasterVerification';
+import { processUserEvent } from '../userEvents';
 
 /**
  * Handles VerifyFarcasterRequested event
  * 
- * New flow:
- * 1. Extract Farcaster ID and wallet from event args
- * 2. Check if Farcaster ID exists globally (across all chains)
- * 3. If exists: Get user data (userId, twitterId, farcasterId, wallets for current chain only), call createOrUpdateUser
- * 4. If new: Generate new userId atomically, call createOrUpdateUser with available info
- * 5. Wait for transaction receipt
- * 6. Process all events from that transaction (UserCreated, WalletLinked, etc.)
- * 7. NO direct memory modifications - only via events from contract
+ * Flow:
+ * 1. Extract auth token and wallet from event args
+ * 2. Verify auth token with Farcaster API to get Farcaster ID
+ * 3. Check if Farcaster ID exists globally (across all chains)
+ * 4. If exists: Get user data, call createOrUpdateUser
+ * 5. If new: Generate new userId atomically, call createOrUpdateUser
+ * 6. Wait for transaction receipt
+ * 7. Process all events from that transaction
+ * 
+ * @throws Error if any step fails
  */
 export async function verifyFarcaster(
     event: ParsedEvent,
@@ -31,14 +31,13 @@ export async function verifyFarcaster(
     console.log(`Event args: ${JSON.stringify(event.args)}`);
 
     // Extract auth token and wallet from event
-    const wallet = transactionFrom.toLowerCase(); // Use transaction from address as wallet
+    const wallet = transactionFrom.toLowerCase();
 
     // Extract auth token from event data (decoded string from ABI-encoded data)
     const authToken = event.args.authToken || event.args.authCode || event.args.data;
 
     if (!authToken || authToken === '0x' || (typeof authToken === 'string' && authToken.startsWith('0x') && authToken.length < 10)) {
-        console.error('No auth token found in event. Event must contain Farcaster auth token.');
-        return;
+        throw new Error('No auth token found in event. Event must contain Farcaster auth token.');
     }
 
     // Clean auth token - remove 0x prefix if present
@@ -56,45 +55,35 @@ export async function verifyFarcaster(
     console.log(`Verifying Farcaster auth token...`);
 
     // Verify auth token with Farcaster API and get Farcaster ID
-    let farcasterId: bigint;
-    try {
-        farcasterId = await verifyFarcasterAuthBigInt(authTokenString);
-        if (farcasterId === 0n) {
-            console.error('Failed to verify Farcaster: got zero farcaster id');
-            return;
-        }
-
-        console.log(`Successfully verified Farcaster auth token, Farcaster ID (FID): ${farcasterId}`);
-    } catch (error: any) {
-        console.error(`Failed to verify Farcaster auth token: ${error.message}`);
-        return;
+    const farcasterId = await verifyFarcasterAuthBigInt(authTokenString);
+    if (farcasterId === 0n) {
+        throw new Error('Failed to verify Farcaster: got zero farcaster id');
     }
 
-
+    console.log(`Successfully verified Farcaster auth token, Farcaster ID (FID): ${farcasterId}`);
 
     const contractAddress = getContracts(chain)?.accountManager;
     if (!contractAddress) {
-        console.error(`No contract address configured for chain: ${chain}`);
-        return;
+        throw new Error(`No contract address configured for chain: ${chain}`);
     }
 
     // Check if Farcaster ID exists globally
-    const existingUserByFarcaster = getUserByFarcasterId(farcasterId);
+    const existingUser = getUserByFarcasterId(farcasterId);
 
     let userId: bigint;
     let twitterIdToSend: bigint = 0n;
     let farcasterIdToSend: bigint = farcasterId;
-    let walletsForChain: Array<{ wallet: string, chain: Chain }> = [{ wallet, chain }];
+    let walletsForChain: Array<{ wallet: string; chain: Chain }> = [{ wallet, chain }];
 
-    if (existingUserByFarcaster) {
+    if (existingUser) {
         // Farcaster ID already exists - use existing userId
-        console.log(`Farcaster ID ${farcasterId} already exists for user ${existingUserByFarcaster.userId}`);
-        userId = existingUserByFarcaster.userId;
-        twitterIdToSend = existingUserByFarcaster.twitterId;
-        farcasterIdToSend = existingUserByFarcaster.farcasterId;
+        console.log(`Farcaster ID ${farcasterId} already exists for user ${existingUser.userId}`);
+        userId = existingUser.userId;
+        twitterIdToSend = existingUser.twitterId;
+        farcasterIdToSend = existingUser.farcasterId;
 
         // Get wallets for current chain only
-        walletsForChain = existingUserByFarcaster.wallets.filter(w => w.chain === chain);
+        walletsForChain = existingUser.wallets.filter(w => w.chain === chain);
         if (walletsForChain.length === 0) {
             walletsForChain = [{ wallet, chain }];
         }
@@ -106,7 +95,7 @@ export async function verifyFarcaster(
     }
 
     // Call createOrUpdateUser on smart contract
-    console.log(`Calling createOrUpdateUser for userId=${userId}, wallet=${wallet}, farcasterId=${farcasterIdToSend}`);
+    console.log(`Calling createOrUpdateUser for userId=${userId}, wallet=${wallet}, farcasterId=${farcasterId}`);
     const txHash = await callCreateOrUpdateUser(
         contractAddress,
         chain,
@@ -118,8 +107,7 @@ export async function verifyFarcaster(
     );
 
     if (!txHash) {
-        console.error(`Failed to call createOrUpdateUser - transaction not sent`);
-        return;
+        throw new Error('Failed to call createOrUpdateUser - transaction not sent');
     }
 
     console.log(`Transaction sent: ${txHash}, waiting for receipt...`);
@@ -127,14 +115,12 @@ export async function verifyFarcaster(
     // Wait for transaction receipt
     const receipt = await fetchTransactionReceipt(chain, txHash);
     if (!receipt) {
-        console.error(`Failed to fetch transaction receipt for ${txHash}`);
-        return;
+        throw new Error(`Failed to fetch transaction receipt for ${txHash}`);
     }
 
     // Verify transaction status
     if (receipt.status !== undefined && receipt.status !== 1n) {
-        console.error(`Transaction ${txHash} failed (status: ${receipt.status})`);
-        return;
+        throw new Error(`Transaction ${txHash} failed (status: ${receipt.status})`);
     }
 
     console.log(`Transaction ${txHash} confirmed, processing events...`);
@@ -148,5 +134,5 @@ export async function verifyFarcaster(
         await processUserEvent(userEvent, chain);
     }
 
-    console.log(`Completed processing VerifyFarcasterRequested for Farcaster ID ${farcasterId}`);
+    console.log(`Completed processing verification for Farcaster ID ${farcasterId}`);
 }

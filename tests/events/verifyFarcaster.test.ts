@@ -1,4 +1,4 @@
-import { verifyFarcaster } from '../../src/gm-account-manager-canister/events/verifyFarcaster';
+import { verifyFarcaster } from '../../src/gm-account-manager-canister/verification/verifyFarcaster';
 import { ParsedEvent, CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from '../../src/gm-account-manager-canister/utils/types';
 import * as userStore from '../../src/gm-account-manager-canister/userManagement/userStore';
 import * as smartContract from '../../src/gm-account-manager-canister/evmContracts/smartContract';
@@ -6,7 +6,7 @@ import * as config from '../../src/gm-account-manager-canister/evmContracts/conf
 import * as atomicCounter from '../../src/gm-account-manager-canister/storage/atomicCounter';
 import * as evmRpc from '../../src/gm-account-manager-canister/evmContracts/evmRpc';
 import * as eventDecoder from '../../src/gm-account-manager-canister/evmContracts/eventDecoder';
-import * as userEvents from '../../src/gm-account-manager-canister/events/userEvents';
+import * as userEvents from '../../src/gm-account-manager-canister/userEvents';
 import * as farcasterVerification from '../../src/gm-account-manager-canister/verification/farcasterVerification';
 
 // Mock dependencies
@@ -16,7 +16,7 @@ jest.mock('../../src/gm-account-manager-canister/evmContracts/config');
 jest.mock('../../src/gm-account-manager-canister/storage/atomicCounter');
 jest.mock('../../src/gm-account-manager-canister/evmContracts/evmRpc');
 jest.mock('../../src/gm-account-manager-canister/evmContracts/eventDecoder');
-jest.mock('../../src/gm-account-manager-canister/events/userEvents');
+jest.mock('../../src/gm-account-manager-canister/userEvents');
 jest.mock('../../src/gm-account-manager-canister/verification/farcasterVerification');
 
 describe('verifyFarcaster Handler', () => {
@@ -105,38 +105,41 @@ describe('verifyFarcaster Handler', () => {
         expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalled();
     });
 
-    it('should handle invalid auth token', async () => {
+    it('should throw error on invalid auth token', async () => {
         const invalidEvent: ParsedEvent = {
             ...mockEvent,
             args: {}, // No auth token
         };
 
-        await verifyFarcaster(invalidEvent, CHAIN_BASE_MAINNET, '0xWallet');
+        await expect(verifyFarcaster(invalidEvent, CHAIN_BASE_MAINNET, '0xWallet'))
+            .rejects.toThrow('No auth token found in event');
 
         expect(farcasterVerification.verifyFarcasterAuthBigInt).not.toHaveBeenCalled();
         expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
         expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
     });
 
-    it('should handle verification failure', async () => {
+    it('should propagate verification failure error', async () => {
         (farcasterVerification.verifyFarcasterAuthBigInt as jest.Mock).mockRejectedValue(
             new Error('Invalid auth token')
         );
 
-        await verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
+        await expect(verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWallet'))
+            .rejects.toThrow('Invalid auth token');
 
         expect(farcasterVerification.verifyFarcasterAuthBigInt).toHaveBeenCalled();
         expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
         expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
     });
 
-    it('should handle failed wallet addition gracefully', async () => {
+    it('should throw error on failed transaction', async () => {
         // In new architecture, wallet addition happens via events from contract
         // This test checks that transaction failure is handled
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(null);
         (smartContract.callCreateOrUpdateUser as jest.Mock).mockResolvedValue(null);
 
-        await verifyFarcaster(mockEvent, CHAIN_WORLDCHAIN, '0xWallet');
+        await expect(verifyFarcaster(mockEvent, CHAIN_WORLDCHAIN, '0xWallet'))
+            .rejects.toThrow('Failed to call createOrUpdateUser');
 
         expect(evmRpc.fetchTransactionReceipt).not.toHaveBeenCalled();
     });
@@ -157,11 +160,12 @@ describe('verifyFarcaster Handler', () => {
         );
     });
 
-    it('should handle missing contract address gracefully', async () => {
+    it('should throw error on missing contract address', async () => {
         (config.getContracts as jest.Mock).mockReturnValue(null);
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(null);
 
-        await verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
+        await expect(verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWallet'))
+            .rejects.toThrow('No contract address configured for chain');
 
         expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
         expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
