@@ -1,15 +1,15 @@
 // Simplified Minting Processor
 // Implements the new minting architecture with complexity management, retry logic, and locks
 
-import { addTwitterErroredQuery, setMintingStatus, getMintingStatus, resetMintingStatus } from './storage';
-import { ChainContract, startMinting as startChainMinting, mintForUsers, finishMinting as finishChainMinting } from './chainContract';
-import { processTwitterMinting, MintingResult, GetUsersCallback } from './workers/twitter/process';
-import { processFarcasterMinting, FarcasterMintingResult, GetFarcasterUsersCallback } from './workers/farcaster/process';
-import { getTwitterUsers, getFarcasterUsers } from './utils/accountManagerClient';
-import { getCurrentMintingDayTimestamp } from './utils/dateUtils';
-import { shouldStartNewEpoch, startNewEpoch, addEpochPoints, getCoinsMultiplicator } from './minting/complexityManager';
-import { addError, hasErrors, clearAllErrors } from './storage/errorStorage';
-import { scheduleRetryWorker, resetRetryCount } from './minting/retryScheduler';
+import { addTwitterErroredQuery, setMintingStatus, getMintingStatus, resetMintingStatus } from '../storage';
+import { ChainContract, startMinting as startChainMinting, mintForUsers, finishMinting as finishChainMinting } from '../evmContracts/contractFunctions';
+import { processTwitterMinting, MintingResult, GetUsersCallback } from '../workers/twitter/process';
+import { processFarcasterMinting, FarcasterMintingResult, GetFarcasterUsersCallback } from '../workers/farcaster/process';
+import { getTwitterUsers, getFarcasterUsers } from '../icpCanisters/accountManagmentCanister';
+import { getCurrentMintingDayTimestamp } from '../utils/dateUtils';
+import { shouldStartNewEpoch, startNewEpoch, addEpochPoints, getCoinsMultiplicator } from './complexityManager';
+import { addError, hasErrors, clearAllErrors } from '../storage/errorStorage';
+import { scheduleRetryWorker, resetRetryCount } from './retryScheduler';
 
 // Chain contracts configuration
 const chainContracts: ChainContract[] = [];

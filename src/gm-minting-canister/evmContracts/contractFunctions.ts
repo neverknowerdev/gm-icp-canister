@@ -1,7 +1,7 @@
 import { call, IDL, Principal } from 'azle';
-import { signWithThresholdEcdsa, setKeyId, setDerivationPath, getPublicKey } from './utils/thresholdSigning';
-import { encodeStartMinting, encodeMintForUsers, encodeFinishMinting } from './utils/abiEncoder';
-import { sendSignedTransaction, waitForTransaction } from './utils/evmTransaction';
+import { signWithThresholdEcdsa, setKeyId, setDerivationPath, getPublicKey } from './thresholdSigning';
+import { encodeStartMinting, encodeMintForUsers, encodeFinishMinting } from './abiEncoder';
+import { sendSignedTransaction, waitForTransaction } from './evmTransaction';
 
 let thresholdKeyConfig: {
     threshold: number;
@@ -70,7 +70,6 @@ export async function startMinting(chainContract: ChainContract): Promise<boolea
             chainContract.chainId,
             chainContract.gmCoin.contractAddress,
             encodedData,
-            signature,
             canisterEthereumAddress
         );
 
@@ -112,7 +111,6 @@ export async function mintForUsers(
             chainContract.chainId,
             chainContract.gmCoin.contractAddress,
             encodedData,
-            signature,
             canisterEthereumAddress
         );
 
@@ -147,7 +145,6 @@ export async function finishMinting(
             chainContract.chainId,
             chainContract.gmCoin.contractAddress,
             encodedData,
-            signature,
             canisterEthereumAddress
         );
 

@@ -1,13 +1,13 @@
 import { update, query, IDL, Principal } from 'azle';
 import { initializeMintingScheduler, rescheduleMinting } from './minting/mintingScheduler';
-import { startMinting, addChainContract } from './minting';
-import { ChainContract } from './chainContract';
-import { setAccountManagerCanisterId } from './utils/accountManagerClient';
+import { startMinting, addChainContract } from './minting/minting';
+import { ChainContract } from './evmContracts/contractFunctions';
+import { setAccountManagerCanisterId } from './icpCanisters/accountManagmentCanister';
 import { TwitterSecrets } from './workers/twitter/twitterRequester';
 import { initializeTwitter } from './workers/twitter/process';
 import { getTweetIdsByMintingDay, getTweetInfo, isTweetProcessed, TweetInfo } from './storage';
 import { dateStringToMintingTimestamp } from './utils/dateUtils';
-import { getEthereumAddress } from './utils/thresholdSigning';
+import { getEthereumAddress } from './evmContracts/thresholdSigning';
 import { processAllErrors } from './minting/globalRetryWorker';
 import { scheduleRetryWorker, resetRetryCount } from './minting/retryScheduler';
 import { initializeEncryption, getPublicKey, decryptSecret } from './encryption';

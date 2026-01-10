@@ -15,9 +15,9 @@ import {
 import { processBatchesInParallel, QueryBatch, isTwitterConfigured, getTwitterConfig, calculateTokenAmount, GetUsersCallback } from '../workers/twitter/process';
 import { processFarcasterBatchesInParallel, FarcasterQueryBatch, isFarcasterConfigured } from '../workers/farcaster/process';
 import { TwitterRequester } from '../workers/twitter/twitterRequester';
-import { mintForUsers, ChainContract } from '../chainContract';
-import { getChainContracts } from '../minting';
-import { getTwitterUsers, getFarcasterUsers } from '../utils/accountManagerClient';
+import { mintForUsers, ChainContract } from '../evmContracts/contractFunctions';
+import { getChainContracts } from './minting';
+import { getTwitterUsers, getFarcasterUsers } from '../icpCanisters/accountManagmentCanister';
 import { getCurrentMintingDayTimestamp } from '../utils/dateUtils';
 import { scheduleRetryWorker } from './retryScheduler';
 import { getTweetInfo, storeTweetsBatch, TweetInfo } from '../storage';

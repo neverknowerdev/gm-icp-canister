@@ -297,4 +297,3 @@ export async function getFarcasterUsers(chainId: number, startIndex: bigint, lim
         return [];
     }
 }
-
