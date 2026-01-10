@@ -3,7 +3,7 @@
 import { ic } from 'azle';
 
 const SCANNER_CALLBACK_METHOD = 'scannerCallback';
-const SCAN_INTERVAL_MINUTES = 5; // Scan every 5 minutes (configurable)
+const SCAN_INTERVAL_MINUTES = 60; // Scan every 5 minutes (configurable)
 const SCAN_INTERVAL_NS = BigInt(SCAN_INTERVAL_MINUTES * 60 * 1_000_000_000); // Convert to nanoseconds
 
 let isScheduled = false;
@@ -16,7 +16,7 @@ export function scheduleScanner(): void {
         // Use Date.now() for now - in production, use ic.time() if available
         const now = BigInt(Date.now() * 1_000_000); // Convert to nanoseconds
         const nextRun = now + SCAN_INTERVAL_NS;
-        
+
         // Use ic.setTimer to schedule scanner callback
         if (typeof (globalThis as any).ic !== 'undefined' && (globalThis as any).ic.setTimer) {
             (globalThis as any).ic.setTimer(nextRun, SCANNER_CALLBACK_METHOD);
