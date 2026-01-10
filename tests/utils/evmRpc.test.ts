@@ -1,4 +1,4 @@
-import { fetchTransactionReceipt } from '../../src/gm-account-manager-canister/utils/evmRpc';
+import { fetchTransactionReceipt } from '../../src/gm-account-manager-canister/evmContracts/evmRpc';
 import { CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from '../../src/gm-account-manager-canister/utils/types';
 import * as azle from 'azle';
 

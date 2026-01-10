@@ -1,23 +1,23 @@
 import { query, update, IDL } from 'azle';
 import { processEvent } from './eventProcessor';
-import { initConfig } from './utils/config';
+import { initContracts } from './evmContracts/config';
 import { getUser, getUserByTwitterId, getUserByFarcasterId, getTwitterUsers as getTwitterUsersFromStore, getFarcasterUsers as getFarcasterUsersFromStore } from './userManagement/userStore';
-import { getEthereumAddress } from './utils/thresholdSigning';
+import { getEthereumAddress } from './evmContracts/thresholdSigning';
 import { initializeScanner, scheduleScanner } from './scanner/scannerScheduler';
 import { scanAllChains } from './scanner/transactionScanner';
-import { initTwitterConfig } from './utils/twitterVerification';
-import { initFarcasterConfig } from './utils/farcasterVerification';
+import { initTwitterConfig } from './verification/twitterVerification';
+import { initFarcasterConfig } from './verification/farcasterVerification';
 import { Chain, CHAINS, isValidChain } from './utils/types';
 import { initializeCleanupScheduler, scheduleCleanup } from './storage/storageCleanerScheduler';
 import { cleanStorage } from './storage/storageCleaner';
 import { initializeEncryption, getPublicKey, decryptSecret } from './encryption';
 
-interface Config {
+interface ContractsConfig {
     contracts: {
-        [chain: string]: string[];
-    };
-    eventSignatures: {
-        [eventName: string]: string;
+        [chain: string]: {
+            accountManager: string;
+            GMCoin: string;
+        };
     };
 }
 
@@ -106,25 +106,25 @@ export default class {
         return null;
     }
 
+    /**
+     * Set contract addresses for each chain
+     * Event signatures are auto-calculated from ABI
+     */
     @update([IDL.Record({
         contracts: IDL.Record({
-            'Base Mainnet': IDL.Vec(IDL.Text),
-            'WorldChain': IDL.Vec(IDL.Text),
-        }),
-        eventSignatures: IDL.Record({
-            'VerifyFarcasterRequested': IDL.Text,
-            'VerifyTwitterByAuthCodeRequested': IDL.Text,
-            'UserCreated': IDL.Text,
-            'UserRemoved': IDL.Text,
-            'SocialAccountLinked': IDL.Text,
-            'PrimaryWalletUpdated': IDL.Text,
-            'WalletLinked': IDL.Text,
-            'HumanVerificationUpdated': IDL.Text,
+            'Base Mainnet': IDL.Record({
+                accountManager: IDL.Text,
+                GMCoin: IDL.Text,
+            }),
+            'WorldChain': IDL.Record({
+                accountManager: IDL.Text,
+                GMCoin: IDL.Text,
+            }),
         }),
     })], IDL.Null)
-    setConfig(config: Config): null {
-        initConfig(config);
-        console.log('Configuration updated successfully');
+    setContractAddresses(config: ContractsConfig): null {
+        initContracts(config);
+        console.log('Contract addresses updated successfully');
         return null;
     }
 

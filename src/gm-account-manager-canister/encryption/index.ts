@@ -8,6 +8,7 @@ import { x25519 } from '@noble/curves/ed25519.js';
 import { gcm } from '@noble/ciphers/aes.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 import { StableBTreeMap, ic } from 'azle';
 
 // Stable storage for encryption keys
@@ -194,22 +195,4 @@ export function encryptSecret(secret: string, publicKeyHex: string, randomBytes:
         console.error(`Error encrypting secret: ${error}`);
         throw new Error(`Encryption failed: ${error.message || error}`);
     }
-}
-
-// Utility functions for hex encoding/decoding
-function bytesToHex(bytes: Uint8Array): string {
-    return Array.from(bytes)
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-}
-
-function hexToBytes(hex: string): Uint8Array {
-    if (hex.length % 2 !== 0) {
-        throw new Error('Invalid hex string');
-    }
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < bytes.length; i++) {
-        bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-    }
-    return bytes;
 }

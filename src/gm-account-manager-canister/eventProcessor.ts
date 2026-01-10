@@ -1,9 +1,9 @@
 import { TransactionReceipt, ParsedEvent, Chain, chainName, BLOCKS_PER_DAY, TRANSACTION_MAX_AGE_DAYS } from './utils/types';
-import { fetchTransactionReceipt } from './utils/evmRpc';
-import { extractEvents } from './utils/eventParser';
+import { fetchTransactionReceipt } from './evmContracts/evmRpc';
+import { extractEvents } from './evmContracts/eventDecoder';
 import { verifyTwitter } from './events/verifyTwitter';
 import { verifyFarcaster } from './events/verifyFarcaster';
-import { getContractAddresses } from './utils/config';
+import { getContractAddresses } from './evmContracts/config';
 import {
     isTransactionProcessed,
     markTransactionProcessed,

@@ -3,7 +3,7 @@
  * Verifies Farcaster credentials and extracts Farcaster user IDs (FIDs)
  */
 
-import { httpGet, httpPost } from './httpClient';
+import { httpGet, httpPost } from '../utils/httpClient';
 
 export interface FarcasterApiConfig {
     apiKey?: string; // Optional API key for Farcaster API

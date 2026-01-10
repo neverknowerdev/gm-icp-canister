@@ -1,24 +1,31 @@
-import { callCreateUser, callAddUser, encodeUserData } from '../../src/gm-account-manager-canister/utils/smartContract';
+import { callCreateUser, callAddUser, encodeUserData } from '../../src/gm-account-manager-canister/evmContracts/smartContract';
 import { User } from '../../src/gm-account-manager-canister/userManagement/userTypes';
 import { CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from '../../src/gm-account-manager-canister/utils/types';
 
 // Mock dependencies
-jest.mock('../../src/gm-account-manager-canister/utils/evmTransaction', () => ({
+jest.mock('../../src/gm-account-manager-canister/evmContracts/evmTransaction', () => ({
     sendSignedTransaction: jest.fn(),
 }));
 
-jest.mock('../../src/gm-account-manager-canister/utils/thresholdSigning', () => ({
+jest.mock('../../src/gm-account-manager-canister/evmContracts/thresholdSigning', () => ({
     getEthereumAddress: jest.fn(),
 }));
 
-import { sendSignedTransaction } from '../../src/gm-account-manager-canister/utils/evmTransaction';
-import { getEthereumAddress } from '../../src/gm-account-manager-canister/utils/thresholdSigning';
+import { sendSignedTransaction } from '../../src/gm-account-manager-canister/evmContracts/evmTransaction';
+import { getEthereumAddress } from '../../src/gm-account-manager-canister/evmContracts/thresholdSigning';
+
+// Valid Ethereum addresses for testing (40 hex chars after 0x)
+const TEST_CONTRACT = '0x1234567890123456789012345678901234567890';
+const TEST_WALLET = '0xabcdef0123456789abcdef0123456789abcdef01';
+const TEST_WALLET_2 = '0x1111111111111111111111111111111111111111';
+const TEST_WALLET_3 = '0x2222222222222222222222222222222222222222';
+const TEST_CANISTER = '0x3333333333333333333333333333333333333333';
 
 describe('Smart Contract Utilities', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         // Mock default return values
-        (getEthereumAddress as jest.Mock).mockResolvedValue('0xCanisterAddress');
+        (getEthereumAddress as jest.Mock).mockResolvedValue(TEST_CANISTER);
         (sendSignedTransaction as jest.Mock).mockResolvedValue('0xtxhash123');
     });
     describe('encodeUserData', () => {
@@ -30,11 +37,11 @@ describe('Smart Contract Utilities', () => {
                 farcasterId: 200n,
                 isVerified: true,
                 verifications: ['twitter', 'farcaster'],
-                primaryWallet: '0x123',
+                primaryWallet: TEST_WALLET,
                 primaryChain: CHAIN_BASE_MAINNET,
                 wallets: [
-                    { wallet: '0x123', chain: CHAIN_BASE_MAINNET },
-                    { wallet: '0x456', chain: CHAIN_WORLDCHAIN },
+                    { wallet: TEST_WALLET, chain: CHAIN_BASE_MAINNET },
+                    { wallet: TEST_WALLET_2, chain: CHAIN_WORLDCHAIN },
                 ],
             };
 
@@ -46,7 +53,7 @@ describe('Smart Contract Utilities', () => {
             expect(encoded.farcasterId).toBe(200n);
             expect(encoded.isVerified).toBe(true);
             expect(encoded.verifications).toEqual(['twitter', 'farcaster']);
-            expect(encoded.primaryWallet).toBe('0x123');
+            expect(encoded.primaryWallet).toBe(TEST_WALLET);
             expect(encoded.wallets).toHaveLength(2);
         });
     });
@@ -54,10 +61,10 @@ describe('Smart Contract Utilities', () => {
     describe('callCreateUser', () => {
         it('should call createUser with correct parameters', async () => {
             const result = await callCreateUser(
-                '0xContract',
+                TEST_CONTRACT,
                 CHAIN_BASE_MAINNET,
                 1n,
-                '0xWallet',
+                TEST_WALLET,
                 100n,
                 200n
             );
@@ -75,10 +82,10 @@ describe('Smart Contract Utilities', () => {
             // The actual implementation already handles errors internally
             // This test verifies that errors don't propagate
             const result = await callCreateUser(
-                '0xContract',
+                TEST_CONTRACT,
                 CHAIN_BASE_MAINNET,
                 1n,
-                '0xWallet',
+                TEST_WALLET,
                 100n,
                 200n
             );
@@ -97,12 +104,12 @@ describe('Smart Contract Utilities', () => {
                 farcasterId: 0n,
                 isVerified: false,
                 verifications: [],
-                primaryWallet: '0x123',
+                primaryWallet: TEST_WALLET,
                 primaryChain: CHAIN_BASE_MAINNET,
-                wallets: [{ wallet: '0x123', chain: CHAIN_BASE_MAINNET }],
+                wallets: [{ wallet: TEST_WALLET, chain: CHAIN_BASE_MAINNET }],
             };
 
-            const result = await callAddUser('0xContract', CHAIN_BASE_MAINNET, 1n, user);
+            const result = await callAddUser(TEST_CONTRACT, CHAIN_BASE_MAINNET, 1n, user);
 
             expect(result).toBe(true);
         });
@@ -115,9 +122,9 @@ describe('Smart Contract Utilities', () => {
                 farcasterId: 0n,
                 isVerified: false,
                 verifications: [],
-                primaryWallet: '0x123',
+                primaryWallet: TEST_WALLET,
                 primaryChain: CHAIN_BASE_MAINNET,
-                wallets: [{ wallet: '0x123', chain: CHAIN_BASE_MAINNET }],
+                wallets: [{ wallet: TEST_WALLET, chain: CHAIN_BASE_MAINNET }],
             };
 
             // The function already has try-catch, so we need to mock console.error
@@ -126,7 +133,7 @@ describe('Smart Contract Utilities', () => {
             // Since callAddUser has try-catch, we can't easily mock it to throw
             // The actual implementation already handles errors internally
             // This test verifies that errors don't propagate
-            const result = await callAddUser('0xContract', CHAIN_BASE_MAINNET, 1n, user);
+            const result = await callAddUser(TEST_CONTRACT, CHAIN_BASE_MAINNET, 1n, user);
 
             expect(result).toBe(true);
             consoleErrorSpy.mockRestore();

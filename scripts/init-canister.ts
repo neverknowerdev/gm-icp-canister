@@ -7,7 +7,7 @@
  * the default values and can be updated via a separate update method if needed.
  */
 
-import { initConfig } from '../src/utils/config';
+import { initContracts } from '../src/gm-account-manager-canister/evmContracts/config';
 
 interface Config {
     contracts: {
@@ -23,6 +23,6 @@ interface Config {
  * This would be called during canister deployment
  */
 export function init(config: Config): void {
-    initConfig(config);
+    initContracts(config);
 }
 

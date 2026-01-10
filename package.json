@@ -21,7 +21,8 @@
     "@noble/ciphers": "^2.1.1",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
-    "azle": "0.33.0"
+    "azle": "0.33.0",
+    "micro-eth-signer": "^0.18.1"
   },
   "devDependencies": {
     "@babel/core": "^7.28.5",

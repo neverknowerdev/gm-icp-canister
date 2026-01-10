@@ -1,23 +1,23 @@
 import { verifyFarcaster } from '../../src/gm-account-manager-canister/events/verifyFarcaster';
 import { ParsedEvent, CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from '../../src/gm-account-manager-canister/utils/types';
 import * as userStore from '../../src/gm-account-manager-canister/userManagement/userStore';
-import * as smartContract from '../../src/gm-account-manager-canister/utils/smartContract';
-import * as config from '../../src/gm-account-manager-canister/utils/config';
+import * as smartContract from '../../src/gm-account-manager-canister/evmContracts/smartContract';
+import * as config from '../../src/gm-account-manager-canister/evmContracts/config';
 import * as atomicCounter from '../../src/gm-account-manager-canister/storage/atomicCounter';
-import * as evmRpc from '../../src/gm-account-manager-canister/utils/evmRpc';
-import * as eventParser from '../../src/gm-account-manager-canister/utils/eventParser';
+import * as evmRpc from '../../src/gm-account-manager-canister/evmContracts/evmRpc';
+import * as eventDecoder from '../../src/gm-account-manager-canister/evmContracts/eventDecoder';
 import * as userEvents from '../../src/gm-account-manager-canister/events/userEvents';
-import * as farcasterVerification from '../../src/gm-account-manager-canister/utils/farcasterVerification';
+import * as farcasterVerification from '../../src/gm-account-manager-canister/verification/farcasterVerification';
 
 // Mock dependencies
 jest.mock('../../src/gm-account-manager-canister/userManagement/userStore');
-jest.mock('../../src/gm-account-manager-canister/utils/smartContract');
-jest.mock('../../src/gm-account-manager-canister/utils/config');
+jest.mock('../../src/gm-account-manager-canister/evmContracts/smartContract');
+jest.mock('../../src/gm-account-manager-canister/evmContracts/config');
 jest.mock('../../src/gm-account-manager-canister/storage/atomicCounter');
-jest.mock('../../src/gm-account-manager-canister/utils/evmRpc');
-jest.mock('../../src/gm-account-manager-canister/utils/eventParser');
+jest.mock('../../src/gm-account-manager-canister/evmContracts/evmRpc');
+jest.mock('../../src/gm-account-manager-canister/evmContracts/eventDecoder');
 jest.mock('../../src/gm-account-manager-canister/events/userEvents');
-jest.mock('../../src/gm-account-manager-canister/utils/farcasterVerification');
+jest.mock('../../src/gm-account-manager-canister/verification/farcasterVerification');
 
 describe('verifyFarcaster Handler', () => {
     const mockEvent: ParsedEvent = {
@@ -33,7 +33,7 @@ describe('verifyFarcaster Handler', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        (config.getContractAddress as jest.Mock).mockReturnValue('0xContract');
+        (config.getContracts as jest.Mock).mockReturnValue({ accountManager: '0xContract', GMCoin: '' });
         (config.getContractAddresses as jest.Mock).mockReturnValue(['0xContract']);
         (atomicCounter.generateNextUserId as jest.Mock).mockResolvedValue(1n);
         (smartContract.callCreateOrUpdateUser as jest.Mock).mockResolvedValue('0xtxhash123');
@@ -41,7 +41,7 @@ describe('verifyFarcaster Handler', () => {
             status: 1n,
             logs: [],
         });
-        (eventParser.extractEvents as jest.Mock).mockReturnValue([]);
+        (eventDecoder.extractEvents as jest.Mock).mockReturnValue([]);
         // Mock Farcaster verification to return Farcaster ID 200
         (farcasterVerification.verifyFarcasterAuthBigInt as jest.Mock).mockResolvedValue(200n);
     });
@@ -62,7 +62,7 @@ describe('verifyFarcaster Handler', () => {
             [{ wallet: '0xwallet', chain: CHAIN_BASE_MAINNET }]
         );
         expect(evmRpc.fetchTransactionReceipt).toHaveBeenCalledWith(CHAIN_BASE_MAINNET, '0xtxhash123');
-        expect(eventParser.extractEvents).toHaveBeenCalled();
+        expect(eventDecoder.extractEvents).toHaveBeenCalled();
     });
 
     it('should add wallet to existing user when Farcaster ID exists', async () => {
@@ -158,7 +158,7 @@ describe('verifyFarcaster Handler', () => {
     });
 
     it('should handle missing contract address gracefully', async () => {
-        (config.getContractAddress as jest.Mock).mockReturnValue(null);
+        (config.getContracts as jest.Mock).mockReturnValue(null);
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(null);
 
         await verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');

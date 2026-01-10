@@ -1,14 +1,14 @@
 import { verifyTwitter } from '../../src/gm-account-manager-canister/events/verifyTwitter';
 import { ParsedEvent, CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from '../../src/gm-account-manager-canister/utils/types';
-import * as smartContract from '../../src/gm-account-manager-canister/utils/smartContract';
-import * as config from '../../src/gm-account-manager-canister/utils/config';
-import * as evmRpc from '../../src/gm-account-manager-canister/utils/evmRpc';
-import * as twitterVerification from '../../src/gm-account-manager-canister/utils/twitterVerification';
+import * as smartContract from '../../src/gm-account-manager-canister/evmContracts/smartContract';
+import * as config from '../../src/gm-account-manager-canister/evmContracts/config';
+import * as evmRpc from '../../src/gm-account-manager-canister/evmContracts/evmRpc';
+import * as twitterVerification from '../../src/gm-account-manager-canister/verification/twitterVerification';
 
-jest.mock('../../src/gm-account-manager-canister/utils/smartContract');
-jest.mock('../../src/gm-account-manager-canister/utils/config');
-jest.mock('../../src/gm-account-manager-canister/utils/evmRpc');
-jest.mock('../../src/gm-account-manager-canister/utils/twitterVerification');
+jest.mock('../../src/gm-account-manager-canister/evmContracts/smartContract');
+jest.mock('../../src/gm-account-manager-canister/evmContracts/config');
+jest.mock('../../src/gm-account-manager-canister/evmContracts/evmRpc');
+jest.mock('../../src/gm-account-manager-canister/verification/twitterVerification');
 
 describe('verifyTwitter Handler', () => {
     const mockEvent: ParsedEvent = {
@@ -26,7 +26,7 @@ describe('verifyTwitter Handler', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        (config.getContractAddress as jest.Mock).mockReturnValue('0xContract');
+        (config.getContracts as jest.Mock).mockReturnValue({ accountManager: '0xContract', GMCoin: '' });
         (smartContract.callVerifyTwitter as jest.Mock).mockResolvedValue('0xtxhash123');
         (evmRpc.fetchTransactionReceipt as jest.Mock).mockResolvedValue({
             status: 1n,
@@ -99,7 +99,7 @@ describe('verifyTwitter Handler', () => {
     });
 
     it('should handle missing contract address gracefully', async () => {
-        (config.getContractAddress as jest.Mock).mockReturnValue(null);
+        (config.getContracts as jest.Mock).mockReturnValue(null);
 
         await verifyTwitter(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
 

@@ -1,8 +1,8 @@
 import { ParsedEvent, Chain } from '../utils/types';
-import { callVerifyTwitter } from '../utils/smartContract';
-import { getContractAddress } from '../utils/config';
-import { fetchTransactionReceipt } from '../utils/evmRpc';
-import { verifyTwitterAuthCode } from '../utils/twitterVerification';
+import { callVerifyTwitter } from '../evmContracts/smartContract';
+import { getContracts } from '../evmContracts/config';
+import { fetchTransactionReceipt } from '../evmContracts/evmRpc';
+import { verifyTwitterAuthCode } from '../verification/twitterVerification';
 
 /**
  * Handles VerifyTwitterByAuthCodeRequested event
@@ -54,7 +54,7 @@ export async function verifyTwitter(
         return;
     }
 
-    const contractAddress = getContractAddress(chain);
+    const contractAddress = getContracts(chain)?.accountManager;
     if (!contractAddress) {
         console.error(`No contract address configured for chain: ${chain}`);
         return;

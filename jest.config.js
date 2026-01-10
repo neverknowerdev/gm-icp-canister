@@ -25,11 +25,11 @@ module.exports = {
         skipLibCheck: true,
       },
     }],
-    // Use babel-jest for noble packages (ESM to CJS)
-    'node_modules/@noble/.+\\.js$': 'babel-jest',
+    // Use babel-jest for ESM packages (noble, micro-eth-signer, etc.)
+    'node_modules/(@noble|micro-eth-signer|micro-packed|@scure)/.+\\.js$': 'babel-jest',
   },
-  // Transform noble packages from ESM to CJS
+  // Transform ESM packages to CJS
   transformIgnorePatterns: [
-    'node_modules/(?!(@noble)/)',
+    'node_modules/(?!(@noble|micro-eth-signer|micro-packed|@scure)/)',
   ],
 };

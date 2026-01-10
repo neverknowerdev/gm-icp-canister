@@ -1,5 +1,5 @@
 import { call, IDL, Principal } from 'azle';
-import { keccak256 } from './keccak256';
+import { keccak_256 } from '@noble/hashes/sha3.js';
 
 const MANAGEMENT_CANISTER = Principal.fromText('aaaaa-aa');
 const KEY_NAME = 'gm_account_manager_wallet';
@@ -68,7 +68,7 @@ export async function getPublicKey(): Promise<Uint8Array> {
  */
 export async function signWithThresholdEcdsa(data: Uint8Array): Promise<Uint8Array> {
     try {
-        const messageHash = keccak256(data);
+        const messageHash = keccak_256(data);
         const derivationPathBytes = derivationPath.map(p => Array.from(p));
 
         const result = await call(MANAGEMENT_CANISTER, 'sign_with_ecdsa', {
@@ -116,7 +116,7 @@ export async function signWithThresholdEcdsa(data: Uint8Array): Promise<Uint8Arr
 
 /**
  * Derives Ethereum address from ECDSA public key
- * The address is the last 20 bytes of keccak256 hash of the public key
+ * The address is the last 20 bytes of keccak_256 hash of the public key
  * @param publicKey - The public key bytes (typically 65 bytes with 0x04 prefix, or 64 bytes without)
  * @returns Ethereum address as hex string with 0x prefix
  */
@@ -134,8 +134,8 @@ export function deriveEthereumAddress(publicKey: Uint8Array): string {
         throw new Error(`Invalid public key length: ${publicKey.length} (expected 64 or 65 bytes)`);
     }
 
-    // Hash with keccak256
-    const hash = keccak256(keyBytes);
+    // Hash with keccak_256
+    const hash = keccak_256(keyBytes);
 
     // Take last 20 bytes (Ethereum address)
     const addressBytes = hash.slice(-20);

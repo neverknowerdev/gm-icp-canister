@@ -1,5 +1,5 @@
 import { call, IDL, Principal } from 'azle';
-import { TransactionReceipt, LogEntry, Chain, chainName, CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from './types';
+import { TransactionReceipt, LogEntry, Chain, chainName, CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from '../utils/types';
 
 // EVM RPC Canister Principal ID
 export const EVM_RPC_CANISTER_ID = Principal.fromText('7hfb6-caaaa-aaaar-qadga-cai');

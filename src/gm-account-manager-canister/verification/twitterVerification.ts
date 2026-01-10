@@ -3,7 +3,7 @@
  * Verifies Twitter auth codes by fetching tweets and validating authCode in tweet content
  */
 
-import { httpGet } from './httpClient';
+import { httpGet } from '../utils/httpClient';
 
 export interface TwitterApiConfig {
     tweetFetchURL: string;
@@ -42,15 +42,15 @@ interface TwitterResponseV2 {
 /**
  * Get tweet content and author ID from Twitter API response
  */
-function getTweetContentAndAuthorId(response: any): { tweetContent: string; authorId: string } | null {
-    if (response.data?.tweet_results?.result?.legacy) {
+function getTweetContentAndAuthorId(response: TwitterResponseV1 | TwitterResponseV2): { tweetContent: string; authorId: string } | null {
+    if ('data' in response && response.data?.tweet_results?.result?.legacy) {
         return {
             tweetContent: response.data.tweet_results.result.legacy.full_text,
             authorId: response.data.tweet_results.result.legacy.user_id_str
         };
     }
 
-    if (response.text && response.author_id) {
+    if ('text' in response && 'author_id' in response && response.text && response.author_id) {
         return {
             tweetContent: response.text,
             authorId: response.author_id

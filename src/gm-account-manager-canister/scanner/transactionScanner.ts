@@ -3,10 +3,10 @@
 import { call, IDL } from 'azle';
 import { processEvent } from '../eventProcessor';
 import { getLastProcessedBlock, updateLastProcessedBlock, getTrackedChains } from '../storage/blockTracker';
-import { getContractAddresses } from '../utils/config';
+import { getContractAddresses } from '../evmContracts/config';
 import { isTransactionProcessed } from '../storage/transactionTracker';
 import { Chain, CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN, chainName } from '../utils/types';
-import { EVM_RPC_CANISTER_ID, RpcServices, RpcConfig, getRpcServices, createDefaultRpcConfig } from '../utils/evmRpc';
+import { EVM_RPC_CANISTER_ID, RpcServices, RpcConfig, getRpcServices, createDefaultRpcConfig } from '../evmContracts/evmRpc';
 
 
 /**

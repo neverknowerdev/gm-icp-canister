@@ -2,7 +2,7 @@ import { User } from '../userManagement/userTypes';
 import { encodeCreateOrUpdateUser, encodeVerifyTwitter } from './abiEncoder';
 import { getEthereumAddress } from './thresholdSigning';
 import { sendSignedTransaction } from './evmTransaction';
-import { Chain } from './types';
+import { Chain } from '../utils/types';
 
 // Smart contract interaction utilities
 

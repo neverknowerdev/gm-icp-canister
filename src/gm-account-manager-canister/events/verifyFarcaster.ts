@@ -2,14 +2,13 @@ import { ParsedEvent, Chain } from '../utils/types';
 import {
     getUserByFarcasterId,
 } from '../userManagement/userStore';
-import { callCreateOrUpdateUser } from '../utils/smartContract';
-import { getContractAddress } from '../utils/config';
+import { callCreateOrUpdateUser } from '../evmContracts/smartContract';
+import { getContracts, getContractAddresses } from '../evmContracts/config';
 import { generateNextUserId } from '../storage/atomicCounter';
-import { fetchTransactionReceipt } from '../utils/evmRpc';
-import { extractEvents } from '../utils/eventParser';
-import { getContractAddresses } from '../utils/config';
+import { fetchTransactionReceipt } from '../evmContracts/evmRpc';
+import { extractEvents } from '../evmContracts/eventDecoder';
 import { processUserEvent } from './userEvents';
-import { verifyFarcasterAuthBigInt } from '../utils/farcasterVerification';
+import { verifyFarcasterAuthBigInt } from '../verification/farcasterVerification';
 
 /**
  * Handles VerifyFarcasterRequested event
@@ -73,7 +72,7 @@ export async function verifyFarcaster(
 
 
 
-    const contractAddress = getContractAddress(chain);
+    const contractAddress = getContracts(chain)?.accountManager;
     if (!contractAddress) {
         console.error(`No contract address configured for chain: ${chain}`);
         return;
