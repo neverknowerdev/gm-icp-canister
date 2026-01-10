@@ -110,16 +110,17 @@ export default class {
     /**
      * Set contract addresses for each chain
      * Event signatures are auto-calculated from ABI
+     * Only accountManager is required, GMCoin is optional
      */
     @update([IDL.Record({
         contracts: IDL.Record({
             'Base Mainnet': IDL.Record({
                 accountManager: IDL.Text,
-                GMCoin: IDL.Text,
+                GMCoin: IDL.Opt(IDL.Text),
             }),
             'WorldChain': IDL.Record({
                 accountManager: IDL.Text,
-                GMCoin: IDL.Text,
+                GMCoin: IDL.Opt(IDL.Text),
             }),
         }),
     })], IDL.Null)
@@ -131,21 +132,23 @@ export default class {
 
     /**
      * Initialize Twitter API configuration for verification
-     * Uses authCode-based verification (fetch tweet, validate authCode in tweet)
+     * All fields should be encrypted using the canister's public key (from encryptionPublicKey())
      */
     @update([IDL.Record({
-        tweetFetchURL: IDL.Text,
-        headerName: IDL.Text,
+        tweetFetchURLEncrypted: IDL.Text,
+        headerNameEncrypted: IDL.Text,
         bearerTokenEncrypted: IDL.Text,
     })], IDL.Null)
-    setTwitterConfig(config: { tweetFetchURL: string; headerName: string; bearerTokenEncrypted: string }): null {
+    setTwitterConfig(config: { tweetFetchURLEncrypted: string; headerNameEncrypted: string; bearerTokenEncrypted: string }): null {
         try {
+            const tweetFetchURL = decryptSecret(config.tweetFetchURLEncrypted);
+            const headerName = decryptSecret(config.headerNameEncrypted);
             const bearerToken = decryptSecret(config.bearerTokenEncrypted);
 
             initTwitterConfig({
-                tweetFetchURL: config.tweetFetchURL,
-                headerName: config.headerName,
-                bearerToken: bearerToken,
+                tweetFetchURL,
+                headerName,
+                bearerToken,
             });
             console.log('Twitter API configuration updated successfully');
         } catch (error: any) {

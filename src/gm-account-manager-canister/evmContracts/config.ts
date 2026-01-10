@@ -7,7 +7,7 @@ import { getEventSignature as getAbiEventSignature } from './eventDecoder';
 // Contract addresses for a chain
 export interface ChainContracts {
     accountManager: string;
-    GMCoin: string;
+    GMCoin?: string;  // Optional - not required for account manager
 }
 
 // Input config interface (contracts only, signatures auto-generated)
@@ -99,7 +99,11 @@ export function getContracts(chain: Chain): ChainContracts | null {
 export function getContractAddresses(chain: Chain): string[] {
     const contracts = getContracts(chain);
     if (!contracts) return [];
-    return [contracts.accountManager, contracts.GMCoin].filter(addr => addr !== '');
+    const addresses = [contracts.accountManager];
+    if (contracts.GMCoin) {
+        addresses.push(contracts.GMCoin);
+    }
+    return addresses.filter(addr => addr !== '');
 }
 
 /**

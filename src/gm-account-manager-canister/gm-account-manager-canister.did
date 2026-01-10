@@ -12,14 +12,14 @@ service: () -> {
     // Configuration
     setContractAddresses: (record {
         contracts: record {
-            "Base Mainnet": record { accountManager: text; GMCoin: text };
-            "WorldChain": record { accountManager: text; GMCoin: text };
+            "Base Mainnet": record { accountManager: text; GMCoin: opt text };
+            "WorldChain": record { accountManager: text; GMCoin: opt text };
         };
     }) -> (null);
 
     setTwitterConfig: (record {
-        tweetFetchURL: text;
-        headerName: text;
+        tweetFetchURLEncrypted: text;
+        headerNameEncrypted: text;
         bearerTokenEncrypted: text;
     }) -> (null);
 
