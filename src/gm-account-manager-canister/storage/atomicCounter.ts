@@ -14,10 +14,10 @@ export async function generateNextUserId(): Promise<bigint> {
     const stored = nextUserIdStorage.get('counter');
     let current: bigint;
 
-    if (stored.length === 0) {
+    if (stored === undefined) {
         current = 1n;
     } else {
-        current = stored[0];
+        current = stored;
     }
 
     // Increment and store atomically
@@ -33,10 +33,10 @@ export async function generateNextUserId(): Promise<bigint> {
  */
 export function getNextUserId(): bigint {
     const stored = nextUserIdStorage.get('counter');
-    if (stored.length === 0) {
+    if (stored === undefined) {
         return 1n;
     }
-    return stored[0];
+    return stored;
 }
 
 /**

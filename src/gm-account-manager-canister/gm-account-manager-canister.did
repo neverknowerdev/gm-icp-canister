@@ -1,98 +1,18 @@
 service: () -> {
-    // Internal callbacks (called by ICP timer system)
-    scannerCallback: () -> (null);
     cleanupCallback: () -> (null);
-
-    // Basic
-    greet: (text) -> (text) query;
-
-    // Event processing
-    handleEvent: (nat32, text) -> (null);
-
-    // Configuration
-    setContractAddresses: (record {
-        contracts: record {
-            "Base Mainnet": record { accountManager: text; GMCoin: opt text };
-            "WorldChain": record { accountManager: text; GMCoin: opt text };
-        };
-    }) -> (null);
-
-    setTwitterConfig: (record {
-        tweetFetchURLEncrypted: text;
-        headerNameEncrypted: text;
-        bearerTokenEncrypted: text;
-    }) -> (null);
-
-    setFarcasterConfig: (record {
-        apiKeyEncrypted: text;
-        apiUrl: opt text;
-    }) -> (null);
-
-    // User queries
-    getUser: (nat64) -> (opt record {
-        userId: nat64;
-        chains: vec text;
-        twitterId: nat64;
-        farcasterId: nat64;
-        isVerified: bool;
-        verifications: vec text;
-        primaryWallet: text;
-        primaryChain: text;
-        wallets: vec record { wallet: text; chain: text };
-    }) query;
-
-    getUserByTwitterId: (nat64) -> (opt record {
-        userId: nat64;
-        chains: vec text;
-        twitterId: nat64;
-        farcasterId: nat64;
-        isVerified: bool;
-        verifications: vec text;
-        primaryWallet: text;
-        primaryChain: text;
-        wallets: vec record { wallet: text; chain: text };
-    }) query;
-
-    getUserByFarcasterId: (nat64) -> (opt record {
-        userId: nat64;
-        chains: vec text;
-        twitterId: nat64;
-        farcasterId: nat64;
-        isVerified: bool;
-        verifications: vec text;
-        primaryWallet: text;
-        primaryChain: text;
-        wallets: vec record { wallet: text; chain: text };
-    }) query;
-
-    getUsers: (vec nat64) -> (vec record {
-        userId: nat64;
-        chains: vec text;
-        twitterId: nat64;
-        farcasterId: nat64;
-        isVerified: bool;
-        verifications: vec text;
-        primaryWallet: text;
-        primaryChain: text;
-        wallets: vec record { wallet: text; chain: text };
-    }) query;
-
-    getTwitterUsers: (nat32, nat64, nat64) -> (vec record {
-        userId: nat64;
-        accountId: nat64;
-        walletAddress: text;
-    }) query;
-
-    getFarcasterUsers: (nat32, nat64, nat64) -> (vec record {
-        userId: nat64;
-        accountId: nat64;
-        walletAddress: text;
-    }) query;
-
-    // Wallet and encryption
-    evmWalletAddress: () -> (text) query;
     encryptionPublicKey: () -> (text) query;
-
-    // Transaction status
+    evmWalletAddress: () -> (text) query;
+    getFarcasterUsers: (nat32, nat64, nat64) -> (vec record {accountId:nat64; userId:nat64; walletAddress:text}) query;
     getTransactionStatus: (nat32, text) -> (text) query;
+    getTwitterUsers: (nat32, nat64, nat64) -> (vec record {accountId:nat64; userId:nat64; walletAddress:text}) query;
+    getUser: (nat64) -> (opt record {farcasterId:nat64; primaryChain:text; userId:nat64; primaryWallet:text; isVerified:bool; wallets:vec record {chain:text; wallet:text}; twitterId:nat64; chains:vec text; verifications:vec text}) query;
+    getUserByFarcasterId: (nat64) -> (opt record {farcasterId:nat64; primaryChain:text; userId:nat64; primaryWallet:text; isVerified:bool; wallets:vec record {chain:text; wallet:text}; twitterId:nat64; chains:vec text; verifications:vec text}) query;
+    getUserByTwitterId: (nat64) -> (opt record {farcasterId:nat64; primaryChain:text; userId:nat64; primaryWallet:text; isVerified:bool; wallets:vec record {chain:text; wallet:text}; twitterId:nat64; chains:vec text; verifications:vec text}) query;
+    getUsers: (vec nat64) -> (vec record {farcasterId:nat64; primaryChain:text; userId:nat64; primaryWallet:text; isVerified:bool; wallets:vec record {chain:text; wallet:text}; twitterId:nat64; chains:vec text; verifications:vec text}) query;
+    greet: (text) -> (text) query;
+    handleEvent: (nat32, text) -> (null);
+    scannerCallback: () -> (null);
+    setContractAddresses: (record {contracts:record {"Base Mainnet":record {accountManager:text; GMCoin:opt text}; WorldChain:record {accountManager:text; GMCoin:opt text}}}) -> (null);
+    setFarcasterConfig: (record {apiKeyEncrypted:text; apiUrl:opt text}) -> (null);
+    setTwitterConfig: (record {headerNameEncrypted:text; bearerTokenEncrypted:text; tweetFetchURLEncrypted:text}) -> (null);
 }

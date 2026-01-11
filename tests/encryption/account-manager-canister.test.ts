@@ -23,8 +23,8 @@ beforeEach(() => {
 
 describe('Encryption Module', () => {
     describe('initializeEncryption', () => {
-        it('should generate and store X25519 key pair', async () => {
-            await initializeEncryption();
+        it('should generate and store X25519 key pair', () => {
+            initializeEncryption();
 
             const publicKey = getPublicKey();
             expect(publicKey).toBeDefined();
@@ -33,28 +33,28 @@ describe('Encryption Module', () => {
             expect(/^[0-9a-f]+$/.test(publicKey)).toBe(true);
         });
 
-        it('should not regenerate keys if they already exist', async () => {
-            await initializeEncryption();
+        it('should not regenerate keys if they already exist', () => {
+            initializeEncryption();
             const firstPublicKey = getPublicKey();
 
             // Initialize again
-            await initializeEncryption();
+            initializeEncryption();
             const secondPublicKey = getPublicKey();
 
             // Should be the same key
             expect(firstPublicKey).toBe(secondPublicKey);
         });
 
-        it('should set isEncryptionInitialized to true', async () => {
+        it('should set isEncryptionInitialized to true', () => {
             expect(isEncryptionInitialized()).toBe(false);
-            await initializeEncryption();
+            initializeEncryption();
             expect(isEncryptionInitialized()).toBe(true);
         });
     });
 
     describe('getPublicKey', () => {
-        it('should return public key as hex string', async () => {
-            await initializeEncryption();
+        it('should return public key as hex string', () => {
+            initializeEncryption();
             const publicKey = getPublicKey();
 
             expect(publicKey).toBeDefined();
@@ -66,12 +66,36 @@ describe('Encryption Module', () => {
         it('should throw if keys are not initialized', () => {
             expect(() => getPublicKey()).toThrow('Encryption not initialized');
         });
+
+        it('should handle storage returning undefined gracefully', () => {
+            // Before initialization, storage.get() returns undefined
+            // This should throw a proper error, not crash with "cannot read property of undefined"
+            expect(() => getPublicKey()).toThrow('Encryption not initialized');
+        });
+    });
+
+    describe('isEncryptionInitialized', () => {
+        it('should return false when storage is empty (undefined values)', () => {
+            // Storage.get() returns undefined for non-existent keys
+            expect(isEncryptionInitialized()).toBe(false);
+        });
+
+        it('should return true after initialization', () => {
+            initializeEncryption();
+            expect(isEncryptionInitialized()).toBe(true);
+        });
+
+        it('should not throw when storage returns undefined', () => {
+            // This should not throw, just return false
+            expect(() => isEncryptionInitialized()).not.toThrow();
+            expect(isEncryptionInitialized()).toBe(false);
+        });
     });
 
     describe('decryptSecret', () => {
-        it('should decrypt a secret that was encrypted with the public key', async () => {
+        it('should decrypt a secret that was encrypted with the public key', () => {
             // Initialize encryption
-            await initializeEncryption();
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             // Original secret
@@ -88,8 +112,8 @@ describe('Encryption Module', () => {
             expect(decryptedSecret).toBe(originalSecret);
         });
 
-        it('should handle different secret values', async () => {
-            await initializeEncryption();
+        it('should handle different secret values', () => {
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             // Test various secret types
@@ -116,16 +140,24 @@ describe('Encryption Module', () => {
             }).toThrow('Encryption not initialized');
         });
 
-        it('should throw error for invalid encrypted data', async () => {
-            await initializeEncryption();
+        it('should handle storage returning undefined gracefully', () => {
+            // Before initialization, storage.get() returns undefined
+            // This should throw a proper error, not crash with "cannot read property of undefined"
+            expect(() => {
+                decryptSecret('deadbeef');
+            }).toThrow('Encryption not initialized');
+        });
+
+        it('should throw error for invalid encrypted data', () => {
+            initializeEncryption();
 
             expect(() => {
                 decryptSecret('invalid-hex-data!!!');
             }).toThrow();
         });
 
-        it('should throw error for corrupted encrypted data', async () => {
-            await initializeEncryption();
+        it('should throw error for corrupted encrypted data', () => {
+            initializeEncryption();
 
             // Valid hex but wrong size/format
             const invalidHex = '0102030405';
@@ -135,8 +167,8 @@ describe('Encryption Module', () => {
             }).toThrow();
         });
 
-        it('should throw error for tampered ciphertext', async () => {
-            await initializeEncryption();
+        it('should throw error for tampered ciphertext', () => {
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             const originalSecret = 'test-secret';
@@ -153,8 +185,8 @@ describe('Encryption Module', () => {
     });
 
     describe('encryptSecret', () => {
-        it('should encrypt a secret deterministically with same randomness', async () => {
-            await initializeEncryption();
+        it('should encrypt a secret deterministically with same randomness', () => {
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             const secret = 'test-secret';
@@ -167,8 +199,8 @@ describe('Encryption Module', () => {
             expect(encrypted1).toBe(encrypted2);
         });
 
-        it('should produce different ciphertext with different randomness', async () => {
-            await initializeEncryption();
+        it('should produce different ciphertext with different randomness', () => {
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             const secret = 'test-secret';
@@ -182,8 +214,8 @@ describe('Encryption Module', () => {
             expect(encrypted1).not.toBe(encrypted2);
         });
 
-        it('should throw if not enough random bytes provided', async () => {
-            await initializeEncryption();
+        it('should throw if not enough random bytes provided', () => {
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             expect(() => {
@@ -193,9 +225,9 @@ describe('Encryption Module', () => {
     });
 
     describe('Full encryption/decryption flow', () => {
-        it('should work end-to-end: encrypt on client, decrypt on canister', async () => {
+        it('should work end-to-end: encrypt on client, decrypt on canister', () => {
             // Step 1: Initialize encryption on canister
-            await initializeEncryption();
+            initializeEncryption();
 
             // Step 2: Get public key (simulating encryptionPublicKey() call)
             const publicKeyHex = getPublicKey();
@@ -212,8 +244,8 @@ describe('Encryption Module', () => {
             expect(decryptedSecret).toBe(clientSecret);
         });
 
-        it('should handle multiple sequential encryptions/decryptions', async () => {
-            await initializeEncryption();
+        it('should handle multiple sequential encryptions/decryptions', () => {
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             const secrets = [
@@ -231,8 +263,8 @@ describe('Encryption Module', () => {
             }
         });
 
-        it('should handle JSON secrets', async () => {
-            await initializeEncryption();
+        it('should handle JSON secrets', () => {
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             const jsonSecret = JSON.stringify({
@@ -247,6 +279,33 @@ describe('Encryption Module', () => {
 
             expect(decrypted).toBe(jsonSecret);
             expect(JSON.parse(decrypted)).toEqual(JSON.parse(jsonSecret));
+        });
+    });
+
+    describe('Edge cases with StableBTreeMap returning undefined', () => {
+        it('should handle getPublicKey when storage returns undefined', () => {
+            // Storage is cleared in beforeEach, so get() returns undefined
+            // The function should throw a meaningful error, not crash
+            expect(() => getPublicKey()).toThrow('Encryption not initialized');
+        });
+
+        it('should handle decryptSecret when storage returns undefined', () => {
+            // Storage is cleared in beforeEach, so get() returns undefined
+            // The function should throw a meaningful error, not crash
+            expect(() => decryptSecret('aabbccdd')).toThrow('Encryption not initialized');
+        });
+
+        it('should handle isEncryptionInitialized when storage returns undefined', () => {
+            // Storage is cleared in beforeEach, so get() returns undefined
+            // The function should return false without throwing
+            expect(isEncryptionInitialized()).toBe(false);
+        });
+
+        it('should handle initializeEncryption when storage returns undefined (first run)', () => {
+            // Storage is cleared in beforeEach, so get() returns undefined
+            // The function should generate new keys without throwing
+            expect(() => initializeEncryption()).not.toThrow();
+            expect(isEncryptionInitialized()).toBe(true);
         });
     });
 });

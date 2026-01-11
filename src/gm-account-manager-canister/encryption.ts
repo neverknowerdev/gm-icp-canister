@@ -9,7 +9,7 @@ import { gcm } from '@noble/ciphers/aes.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
-import { StableBTreeMap, ic } from 'azle';
+import { StableBTreeMap } from 'azle';
 
 // Stable storage for encryption keys
 // Using memory ID 8 (0-7 are used by other modules)
@@ -25,26 +25,28 @@ const HKDF_INFO = new TextEncoder().encode('gm-canister-encryption-v1');
 
 /**
  * Initialize X25519 key pair if not already generated
- * Uses ICP's rawRand for cryptographically secure randomness
+ * Uses crypto.getRandomValues for cryptographically secure randomness
+ * (Azle automatically seeds CSPRNG from ICP's raw_rand after init)
  * This should be called once during canister initialization
  */
-export async function initializeEncryption(): Promise<void> {
+export function initializeEncryption(): void {
     try {
         // Check if keys already exist
         const existingPrivateKey = ENCRYPTION_KEY_STORAGE.get(PRIVATE_KEY_STORAGE_KEY);
         const existingPublicKey = ENCRYPTION_KEY_STORAGE.get(PUBLIC_KEY_STORAGE_KEY);
 
-        if (existingPrivateKey.length > 0 && existingPublicKey.length > 0) {
+        if (existingPrivateKey !== undefined && existingPublicKey !== undefined) {
             console.log('Encryption keys already initialized');
             return;
         }
 
-        // Generate X25519 key pair using ICP randomness
+        // Generate X25519 key pair using crypto.getRandomValues
+        // Azle's CSPRNG is seeded from ICP's raw_rand after @init/@postUpgrade
         console.log('Generating X25519 key pair for encryption...');
 
-        // Get 32 bytes of randomness from ICP
-        const randomBytes = await ic.rawRand();
-        const privateKey = new Uint8Array(randomBytes);
+        // Get 32 bytes of randomness
+        const privateKey = new Uint8Array(32);
+        crypto.getRandomValues(privateKey);
 
         // Derive public key from private key
         const publicKey = x25519.getPublicKey(privateKey);
@@ -69,11 +71,11 @@ export function getPublicKey(): string {
     try {
         const publicKeyResult = ENCRYPTION_KEY_STORAGE.get(PUBLIC_KEY_STORAGE_KEY);
 
-        if (publicKeyResult.length === 0) {
+        if (publicKeyResult === undefined) {
             throw new Error('Encryption not initialized. Call initializeEncryption() first.');
         }
 
-        return bytesToHex(publicKeyResult[0]);
+        return bytesToHex(publicKeyResult);
     } catch (error: any) {
         console.error(`Error getting public key: ${error}`);
         throw new Error(`Failed to get public key: ${error.message || error}`);
@@ -86,7 +88,7 @@ export function getPublicKey(): string {
 export function isEncryptionInitialized(): boolean {
     const privateKeyResult = ENCRYPTION_KEY_STORAGE.get(PRIVATE_KEY_STORAGE_KEY);
     const publicKeyResult = ENCRYPTION_KEY_STORAGE.get(PUBLIC_KEY_STORAGE_KEY);
-    return privateKeyResult.length > 0 && publicKeyResult.length > 0;
+    return privateKeyResult !== undefined && publicKeyResult !== undefined;
 }
 
 /**
@@ -100,11 +102,11 @@ export function decryptSecret(encryptedSecret: string): string {
         // Get private key from storage
         const privateKeyResult = ENCRYPTION_KEY_STORAGE.get(PRIVATE_KEY_STORAGE_KEY);
 
-        if (privateKeyResult.length === 0) {
+        if (privateKeyResult === undefined) {
             throw new Error('Encryption not initialized. Call initializeEncryption() first.');
         }
 
-        return decryptWithKey(privateKeyResult[0], encryptedSecret);
+        return decryptWithKey(privateKeyResult, encryptedSecret);
     } catch (error: any) {
         console.error(`Error decrypting secret: ${error}`);
         throw new Error(`Failed to decrypt secret: ${error.message || error}`);

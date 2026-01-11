@@ -1,4 +1,7 @@
 {
+  "gm-account-manager-canister": {
+    "ic": "ylges-qaaaa-aaaal-qtlsq-cai"
+  },
   "gm-icp-canister": {
     "ic": "pbyvv-piaaa-aaaal-qs6cq-cai"
   }

@@ -12,10 +12,10 @@ const lastProcessedBlocks = new StableBTreeMap<number, number>(6);
  */
 export function getLastProcessedBlock(chain: Chain): number {
     const stored = lastProcessedBlocks.get(chain);
-    if (stored.length === 0) {
+    if (stored === undefined) {
         return 0;
     }
-    return stored[0];
+    return stored;
 }
 
 /**

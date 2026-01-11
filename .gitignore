@@ -10,6 +10,9 @@
 # dfx temporary files
 .dfx/
 
+# azle build output
+.azle/
+
 # generated files
 **/declarations/
 

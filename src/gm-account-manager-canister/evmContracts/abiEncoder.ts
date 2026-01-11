@@ -8,6 +8,7 @@
  */
 
 import { createContract } from 'micro-eth-signer/advanced/abi.js';
+import { keccak_256 } from '@noble/hashes/sha3.js';
 import AccountManagerABI from './abi/accountManagement.json';
 
 /**
@@ -60,7 +61,6 @@ export function encodeCreateOrUpdateUser(
  * @returns 4-byte selector
  */
 export function getFunctionSelector(functionSignature: string): Uint8Array {
-    const { keccak_256 } = require('@noble/hashes/sha3');
     const hash = keccak_256(new TextEncoder().encode(functionSignature));
     return hash.slice(0, 4);
 }

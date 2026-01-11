@@ -35,7 +35,7 @@ function getChainInProcessing(chain: Chain): Set<string> {
 export function isTransactionProcessed(chain: Chain, txHash: string): boolean {
     const key = getTransactionKey(chain, txHash);
     const stored = processedTransactions.get(key);
-    return stored.length > 0;
+    return stored !== undefined;
 }
 
 /**
@@ -53,10 +53,10 @@ export function markTransactionProcessed(chain: Chain, txHash: string, blockNumb
 export function getTransactionBlockNumber(chain: Chain, txHash: string): number | null {
     const key = getTransactionKey(chain, txHash);
     const stored = processedTransactions.get(key);
-    if (stored.length === 0) {
+    if (stored === undefined) {
         return null;
     }
-    return stored[0];
+    return stored;
 }
 
 /**
@@ -193,7 +193,7 @@ export function getAllProcessedTransactions(chain: Chain): Map<string, number> {
 export function removeProcessedTransaction(chain: Chain, txHash: string): boolean {
     const key = getTransactionKey(chain, txHash);
     const stored = processedTransactions.get(key);
-    if (stored.length === 0) {
+    if (stored === undefined) {
         return false;
     }
     processedTransactions.remove(key);

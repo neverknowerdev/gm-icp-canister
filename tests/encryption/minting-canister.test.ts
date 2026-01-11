@@ -25,8 +25,8 @@ beforeEach(() => {
 
 describe('Minting Canister Encryption Module', () => {
     describe('initializeEncryption', () => {
-        it('should generate and store X25519 key pair', async () => {
-            await initializeEncryption();
+        it('should generate and store X25519 key pair', () => {
+            initializeEncryption();
 
             const publicKey = getPublicKey();
             expect(publicKey).toBeDefined();
@@ -36,11 +36,11 @@ describe('Minting Canister Encryption Module', () => {
         });
 
         it('should not regenerate keys if they already exist', async () => {
-            await initializeEncryption();
+            initializeEncryption();
             const firstPublicKey = getPublicKey();
 
             // Initialize again
-            await initializeEncryption();
+            initializeEncryption();
             const secondPublicKey = getPublicKey();
 
             // Should be the same key
@@ -49,14 +49,14 @@ describe('Minting Canister Encryption Module', () => {
 
         it('should set isEncryptionInitialized to true', async () => {
             expect(isEncryptionInitialized()).toBe(false);
-            await initializeEncryption();
+            initializeEncryption();
             expect(isEncryptionInitialized()).toBe(true);
         });
     });
 
     describe('getPublicKey', () => {
         it('should return public key as hex string', async () => {
-            await initializeEncryption();
+            initializeEncryption();
             const publicKey = getPublicKey();
 
             expect(publicKey).toBeDefined();
@@ -73,7 +73,7 @@ describe('Minting Canister Encryption Module', () => {
     describe('decryptSecret', () => {
         it('should decrypt a secret that was encrypted with the public key', async () => {
             // Initialize encryption
-            await initializeEncryption();
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             // Original secret
@@ -91,7 +91,7 @@ describe('Minting Canister Encryption Module', () => {
         });
 
         it('should handle different secret values', async () => {
-            await initializeEncryption();
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             // Test various secret types
@@ -114,7 +114,7 @@ describe('Minting Canister Encryption Module', () => {
     describe('Twitter Initialization with Encrypted Secrets', () => {
         it('should initialize Twitter with encrypted bearerToken and optimizedAPISecretKey', async () => {
             // Initialize encryption
-            await initializeEncryption();
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             // Original secrets
@@ -151,7 +151,7 @@ describe('Minting Canister Encryption Module', () => {
         });
 
         it('should handle full Twitter initialization flow with encryption', async () => {
-            await initializeEncryption();
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             const secrets = {
@@ -192,7 +192,7 @@ describe('Minting Canister Encryption Module', () => {
     describe('Farcaster Initialization with Encrypted Secrets', () => {
         it('should initialize Farcaster with encrypted apiKey', async () => {
             // Initialize encryption
-            await initializeEncryption();
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             // Original secrets
@@ -219,7 +219,7 @@ describe('Minting Canister Encryption Module', () => {
         });
 
         it('should initialize Farcaster with encrypted apiKey and bearerToken', async () => {
-            await initializeEncryption();
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             // Original secrets
@@ -252,7 +252,7 @@ describe('Minting Canister Encryption Module', () => {
         });
 
         it('should handle full Farcaster initialization flow with encryption', async () => {
-            await initializeEncryption();
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             const secrets = {
@@ -287,7 +287,7 @@ describe('Minting Canister Encryption Module', () => {
         });
 
         it('should handle Farcaster initialization with only apiKey (no bearerToken)', async () => {
-            await initializeEncryption();
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             const apiKey = 'api-key-only-123';
@@ -315,7 +315,7 @@ describe('Minting Canister Encryption Module', () => {
     describe('Full encryption/decryption flow for both services', () => {
         it('should work end-to-end for Twitter: encrypt on client, decrypt on canister', async () => {
             // Step 1: Initialize encryption on canister
-            await initializeEncryption();
+            initializeEncryption();
 
             // Step 2: Get public key (simulating encryptionPublicKey() call)
             const publicKeyHex = getPublicKey();
@@ -340,7 +340,7 @@ describe('Minting Canister Encryption Module', () => {
 
         it('should work end-to-end for Farcaster: encrypt on client, decrypt on canister', async () => {
             // Step 1: Initialize encryption on canister
-            await initializeEncryption();
+            initializeEncryption();
 
             // Step 2: Get public key (simulating encryptionPublicKey() call)
             const publicKeyHex = getPublicKey();
@@ -364,7 +364,7 @@ describe('Minting Canister Encryption Module', () => {
         });
 
         it('should handle multiple sequential encryptions/decryptions for both services', async () => {
-            await initializeEncryption();
+            initializeEncryption();
             const publicKeyHex = getPublicKey();
 
             const twitterSecrets = [

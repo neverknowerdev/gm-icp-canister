@@ -15,13 +15,17 @@ export class MockStableBTreeMap<K, V> {
         return mockStorage.get(this._id)! as Map<string, V>;
     }
 
-    constructor(private _id: number) {}
+    constructor(private _id: number) { }
 
-    get(key: K): V[] {
+    /**
+     * Get a value from the map
+     * Returns the value if found, undefined if not found
+     * This matches Azle 0.33+ API which returns V | undefined
+     */
+    get(key: K): V | undefined {
         const keyStr = this.serializeKey(key);
         const map = this.getStorageMap();
-        const value = map.get(keyStr);
-        return value !== undefined ? [value] : [];
+        return map.get(keyStr);
     }
 
     insert(key: K, value: V): void {

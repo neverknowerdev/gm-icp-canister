@@ -12,11 +12,11 @@ const nextUserIdStorage = new StableBTreeMap<string, bigint>(4);
 // Initialize nextUserId if not exists
 function getNextUserId(): bigint {
     const stored = nextUserIdStorage.get('counter');
-    if (stored.length === 0) {
+    if (stored === undefined) {
         nextUserIdStorage.insert('counter', 1n);
         return 1n;
     }
-    return stored[0];
+    return stored;
 }
 
 function incrementNextUserId(): bigint {
@@ -31,7 +31,7 @@ function incrementNextUserId(): bigint {
  */
 export function getUser(userId: bigint): User | null {
     const user = usersStorage.get(userId);
-    return user.length > 0 ? user[0] : null;
+    return user !== undefined ? user : null;
 }
 
 /**
@@ -39,10 +39,10 @@ export function getUser(userId: bigint): User | null {
  */
 export function getUserByTwitterId(twitterId: bigint): User | null {
     const userIdOpt = twitterToUserIdStorage.get(twitterId);
-    if (userIdOpt.length === 0) {
+    if (userIdOpt === undefined) {
         return null;
     }
-    return getUser(userIdOpt[0]);
+    return getUser(userIdOpt);
 }
 
 /**
@@ -50,10 +50,10 @@ export function getUserByTwitterId(twitterId: bigint): User | null {
  */
 export function getUserByFarcasterId(farcasterId: bigint): User | null {
     const userIdOpt = farcasterToUserIdStorage.get(farcasterId);
-    if (userIdOpt.length === 0) {
+    if (userIdOpt === undefined) {
         return null;
     }
-    return getUser(userIdOpt[0]);
+    return getUser(userIdOpt);
 }
 
 /**
@@ -62,10 +62,10 @@ export function getUserByFarcasterId(farcasterId: bigint): User | null {
 export function getUserByWallet(wallet: string, chain: Chain): User | null {
     const key = `${wallet.toLowerCase()}:${chain}`;
     const userIdOpt = walletToUserIdStorage.get(key);
-    if (userIdOpt.length === 0) {
+    if (userIdOpt === undefined) {
         return null;
     }
-    return getUser(userIdOpt[0]);
+    return getUser(userIdOpt);
 }
 
 /**
@@ -157,16 +157,16 @@ export function createUserWithId(
  */
 export function addWalletToUser(userId: bigint, wallet: string, chain: Chain): boolean {
     const userOpt = usersStorage.get(userId);
-    if (userOpt.length === 0) {
+    if (userOpt === undefined) {
         return false;
     }
 
-    const user = userOpt[0];
+    const user = userOpt;
     const walletLower = wallet.toLowerCase();
     const walletKey = `${walletLower}:${chain}`;
 
     // Check if wallet already exists
-    if (walletToUserIdStorage.get(walletKey).length > 0) {
+    if (walletToUserIdStorage.get(walletKey) !== undefined) {
         return false; // Wallet already associated with a user
     }
 
@@ -197,11 +197,11 @@ export function addWalletToUser(userId: bigint, wallet: string, chain: Chain): b
  */
 export function updateUserTwitterId(userId: bigint, twitterId: bigint): boolean {
     const userOpt = usersStorage.get(userId);
-    if (userOpt.length === 0) {
+    if (userOpt === undefined) {
         return false;
     }
 
-    const user = userOpt[0];
+    const user = userOpt;
 
     // Remove old Twitter ID mapping if exists
     if (user.twitterId > 0n) {
@@ -223,11 +223,11 @@ export function updateUserTwitterId(userId: bigint, twitterId: bigint): boolean 
  */
 export function updateUserFarcasterId(userId: bigint, farcasterId: bigint): boolean {
     const userOpt = usersStorage.get(userId);
-    if (userOpt.length === 0) {
+    if (userOpt === undefined) {
         return false;
     }
 
-    const user = userOpt[0];
+    const user = userOpt;
 
     // Remove old Farcaster ID mapping if exists
     if (user.farcasterId > 0n) {
@@ -248,14 +248,14 @@ export function updateUserFarcasterId(userId: bigint, farcasterId: bigint): bool
  * Check if Twitter ID is globally unique
  */
 export function isTwitterIdUnique(twitterId: bigint): boolean {
-    return twitterToUserIdStorage.get(twitterId).length === 0;
+    return twitterToUserIdStorage.get(twitterId) === undefined;
 }
 
 /**
  * Check if Farcaster ID is globally unique
  */
 export function isFarcasterIdUnique(farcasterId: bigint): boolean {
-    return farcasterToUserIdStorage.get(farcasterId).length === 0;
+    return farcasterToUserIdStorage.get(farcasterId) === undefined;
 }
 
 /**
@@ -273,8 +273,8 @@ export function getTwitterUsers(chainId: Chain, startIndex: bigint, limit: bigin
     // Iterate through all user IDs starting from 1
     for (let userId = 1n; userId < maxUserId; userId++) {
         const userOpt = usersStorage.get(userId);
-        if (userOpt.length > 0) {
-            const user = userOpt[0];
+        if (userOpt !== undefined) {
+            const user = userOpt;
             // Only include users with Twitter ID and matching primaryChain
             if (user.twitterId > 0n && user.primaryChain === chainId) {
                 if (currentIndex >= startIndex && result.length < Number(limit)) {
@@ -314,8 +314,8 @@ export function getFarcasterUsers(chainId: Chain, startIndex: bigint, limit: big
     // Iterate through all user IDs starting from 1
     for (let userId = 1n; userId < maxUserId; userId++) {
         const userOpt = usersStorage.get(userId);
-        if (userOpt.length > 0) {
-            const user = userOpt[0];
+        if (userOpt !== undefined) {
+            const user = userOpt;
             // Only include users with Farcaster ID and matching primaryChain
             if (user.farcasterId > 0n && user.primaryChain === chainId) {
                 if (currentIndex >= startIndex && result.length < Number(limit)) {
@@ -345,11 +345,11 @@ export function getFarcasterUsers(chainId: Chain, startIndex: bigint, limit: big
  */
 export function removeUser(userId: bigint): boolean {
     const userOpt = usersStorage.get(userId);
-    if (userOpt.length === 0) {
+    if (userOpt === undefined) {
         return false;
     }
 
-    const user = userOpt[0];
+    const user = userOpt;
 
     // Remove Twitter ID mapping if exists
     if (user.twitterId > 0n) {
@@ -378,11 +378,11 @@ export function removeUser(userId: bigint): boolean {
  */
 export function updateUserPrimaryWallet(userId: bigint, wallet: string): boolean {
     const userOpt = usersStorage.get(userId);
-    if (userOpt.length === 0) {
+    if (userOpt === undefined) {
         return false;
     }
 
-    const user = userOpt[0];
+    const user = userOpt;
     user.primaryWallet = wallet.toLowerCase();
     usersStorage.insert(userId, user);
 
@@ -394,11 +394,11 @@ export function updateUserPrimaryWallet(userId: bigint, wallet: string): boolean
  */
 export function markUserAsVerified(userId: bigint): boolean {
     const userOpt = usersStorage.get(userId);
-    if (userOpt.length === 0) {
+    if (userOpt === undefined) {
         return false;
     }
 
-    const user = userOpt[0];
+    const user = userOpt;
     user.isVerified = true;
     usersStorage.insert(userId, user);
 

@@ -91,6 +91,8 @@ function validateEnvVars(): void {
     const missing: string[] = [];
 
     if (!TWITTER_BEARER_TOKEN) missing.push('TWITTER_BEARER_TOKEN');
+    if (!TWITTER_TWEET_FETCH_URL) missing.push('TWITTER_TWEET_FETCH_URL');
+    if (!TWITTER_HEADER_NAME) missing.push('TWITTER_HEADER_NAME');
     if (!FARCASTER_API_KEY) missing.push('FARCASTER_API_KEY');
 
     if (missing.length > 0) {
@@ -134,24 +136,199 @@ function getCanisterId(): string {
 }
 
 /**
- * Deploy the canister
+ * Get account ID for receiving ICP
+ */
+function getAccountId(): string {
+    try {
+        return execDfx(`dfx ledger account-id --identity ${identity}`);
+    } catch (error: any) {
+        console.error('Failed to get account ID:', error.message);
+        throw error;
+    }
+}
+
+/**
+ * Get ICP balance
+ * Returns balance in ICP (as a number)
+ */
+function getIcpBalance(): number {
+    try {
+        const output = execDfx(`dfx ledger balance --network ${network} --identity ${identity}`);
+        // Output format: "1.23456789 ICP"
+        const match = output.match(/^([\d.]+)\s*ICP/i);
+        if (match) {
+            return parseFloat(match[1]);
+        }
+        return 0;
+    } catch (error: any) {
+        // If ledger call fails, assume 0 balance
+        console.warn('⚠️  Could not check ICP balance:', error.message);
+        return 0;
+    }
+}
+
+/**
+ * Get cycles balance
+ * Returns balance in cycles (as a number)
+ */
+function getCyclesBalance(): number {
+    try {
+        const output = execDfx(`dfx cycles balance --network ${network} --identity ${identity}`);
+        // Output format: "1234567890 cycles" or "1.234 TC (trillion cycles)"
+        // Try to parse different formats
+        const tcMatch = output.match(/^([\d.]+)\s*TC/i);
+        if (tcMatch) {
+            return parseFloat(tcMatch[1]) * 1_000_000_000_000;
+        }
+        const cyclesMatch = output.match(/^([\d,]+)\s*cycles/i);
+        if (cyclesMatch) {
+            return parseInt(cyclesMatch[1].replace(/,/g, ''), 10);
+        }
+        return 0;
+    } catch (error: any) {
+        // If cycles call fails, assume 0 balance
+        return 0;
+    }
+}
+
+/**
+ * Convert ICP to cycles
+ * @param amount - Amount of ICP to convert
+ */
+function convertIcpToCycles(amount: number): void {
+    // Round to 8 decimal places (e8s precision required by dfx)
+    const roundedAmount = Math.floor(amount * 100_000_000) / 100_000_000;
+    console.log(`💱 Converting ${roundedAmount} ICP to cycles...`);
+    try {
+        execDfx(`dfx cycles convert --amount=${roundedAmount} --network ${network} --identity ${identity}`);
+        console.log('✅ ICP converted to cycles successfully');
+    } catch (error: any) {
+        console.error('❌ Failed to convert ICP to cycles:', error.message);
+        throw error;
+    }
+}
+
+// Approximate cycles per ICP (conservative estimate: ~2.3 TC per ICP)
+const CYCLES_PER_ICP = 2_300_000_000_000;
+
+/**
+ * Convert cycles to ICP equivalent
+ */
+function cyclesToIcp(cycles: number): number {
+    return cycles / CYCLES_PER_ICP;
+}
+
+/**
+ * Show current balances
+ */
+function showBalances(): void {
+    if (network === 'local') {
+        console.log('ℹ️  Local network detected.\n');
+        return;
+    }
+
+    console.log('💰 Current balances:');
+    const icpBalance = getIcpBalance();
+    const cyclesBalance = getCyclesBalance();
+    console.log(`   ICP: ${icpBalance.toFixed(8)} ICP`);
+    console.log(`   Cycles: ${(cyclesBalance / 1_000_000_000_000).toFixed(4)} TC\n`);
+}
+
+/**
+ * Check if error is due to insufficient cycles
+ */
+function isInsufficientCyclesError(errorMessage: string): boolean {
+    return errorMessage.includes('Insufficient cycles balance') ||
+        errorMessage.includes('insufficient cycles');
+}
+
+/**
+ * Try to convert ICP to cycles and return true if successful
+ */
+function tryConvertIcpToCycles(): boolean {
+    const icpBalance = getIcpBalance();
+    const keepForFees = 0.001;
+
+    if (icpBalance <= keepForFees) {
+        return false;
+    }
+
+    const amountToConvert = Math.max(0, icpBalance - keepForFees);
+    try {
+        convertIcpToCycles(amountToConvert);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Show insufficient funds error and exit
+ */
+function showInsufficientFundsError(): void {
+    const accountId = getAccountId();
+    const icpBalance = getIcpBalance();
+    const cyclesBalance = getCyclesBalance();
+
+    console.error('\n❌ Insufficient cycles for deployment.\n');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('💰 Current balances:');
+    console.error(`   ICP: ${icpBalance.toFixed(8)} ICP`);
+    console.error(`   Cycles: ${(cyclesBalance / 1_000_000_000_000).toFixed(4)} TC\n`);
+    console.error('📋 Your Account ID (send ICP here):');
+    console.error(`   ${accountId}\n`);
+    console.error('📝 Steps to fund your account:');
+    console.error('   1. Send ICP to the account ID above');
+    console.error('      (from an exchange like Coinbase, Binance, or another wallet)');
+    console.error('   2. Wait for the transaction to confirm (~2-5 seconds)');
+    console.error('   3. Run this script again\n');
+    console.error('💡 Tip: 1-2 ICP should be enough for Azle canister deployment.');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    process.exit(1);
+}
+
+/**
+ * Deploy the canister with automatic retry on insufficient cycles
  */
 function deployCanister(): void {
     console.log(`🚀 Deploying ${CANISTER_NAME} to ${network} with identity ${identity}...`);
 
-    try {
-        // Build first
-        console.log('🔨 Building canister...');
-        execDfx(`dfx build ${CANISTER_NAME} --network ${network} --identity ${identity}`);
+    const maxRetries = 2;
 
-        // Deploy
-        console.log('📦 Deploying canister...');
-        execDfx(`dfx deploy ${CANISTER_NAME} --network ${network} --identity ${identity}`);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log('📦 Deploying canister (this will create, build, and install)...');
+            execDfx(`dfx deploy ${CANISTER_NAME} --network ${network} --identity ${identity}`);
+            console.log('✅ Canister deployed successfully!');
+            return;
+        } catch (error: any) {
+            const errorMessage = error.message || error.toString();
 
-        console.log('✅ Canister deployed successfully!');
-    } catch (error: any) {
-        console.error('❌ Deployment failed:', error.message);
-        throw error;
+            // Check if it's a cycles error
+            if (isInsufficientCyclesError(errorMessage)) {
+                console.log('\n⚠️  Insufficient cycles detected.');
+
+                if (attempt < maxRetries) {
+                    // Try to convert ICP to cycles
+                    console.log('💱 Attempting to convert ICP to cycles...');
+
+                    if (tryConvertIcpToCycles()) {
+                        console.log('✅ ICP converted. Retrying deployment...\n');
+                        continue; // Retry deployment
+                    } else {
+                        // No ICP to convert
+                        showInsufficientFundsError();
+                    }
+                } else {
+                    // Max retries reached
+                    showInsufficientFundsError();
+                }
+            } else {
+                // Not a cycles error, rethrow
+                console.error('❌ Deployment failed:', errorMessage);
+                throw error;
+            }
+        }
     }
 }
 
@@ -349,25 +526,28 @@ async function main(): Promise<void> {
     validateEnvVars();
 
     try {
-        // Step 1: Deploy canister
+        // Step 1: Show current balances
+        showBalances();
+
+        // Step 2: Deploy canister (will auto-retry with ICP conversion if needed)
         deployCanister();
 
-        // Step 2: Get canister ID
+        // Step 3: Get canister ID
         const canisterId = getCanisterId();
         console.log(`\n📋 Canister ID: ${canisterId}\n`);
 
-        // Step 3: Get public key
+        // Step 4: Get public key
         const publicKey = getPublicKey();
 
-        // Step 4: Set contract addresses
-        console.log('\n📄 Configuring contract addresses...');
-        setContractAddresses();
+        // Step 5: Set contract addresses (commented out for now)
+        // console.log('\n📄 Configuring contract addresses...');
+        // setContractAddresses();
 
-        // Step 5: Set Twitter configuration with encrypted secrets
+        // Step 6: Set Twitter configuration with encrypted secrets
         console.log('\n🐦 Configuring Twitter...');
         setTwitterConfig(publicKey);
 
-        // Step 6: Set Farcaster configuration with encrypted secrets
+        // Step 7: Set Farcaster configuration with encrypted secrets
         console.log('\n🔮 Configuring Farcaster...');
         setFarcasterConfig(publicKey);
 
