@@ -298,7 +298,7 @@ function deployCanister(): void {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             console.log('📦 Deploying canister (this will create, build, and install)...');
-            execDfx(`dfx deploy ${CANISTER_NAME} --network ${network} --identity ${identity}`);
+            execDfx(`dfx deploy ${CANISTER_NAME} --network ${network} --identity ${identity} --yes`);
             console.log('✅ Canister deployed successfully!');
             return;
         } catch (error: any) {

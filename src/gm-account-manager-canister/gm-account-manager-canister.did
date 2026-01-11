@@ -9,8 +9,8 @@ service: () -> {
     getUserByFarcasterId: (nat64) -> (opt record {farcasterId:nat64; primaryChain:text; userId:nat64; primaryWallet:text; isVerified:bool; wallets:vec record {chain:text; wallet:text}; twitterId:nat64; chains:vec text; verifications:vec text}) query;
     getUserByTwitterId: (nat64) -> (opt record {farcasterId:nat64; primaryChain:text; userId:nat64; primaryWallet:text; isVerified:bool; wallets:vec record {chain:text; wallet:text}; twitterId:nat64; chains:vec text; verifications:vec text}) query;
     getUsers: (vec nat64) -> (vec record {farcasterId:nat64; primaryChain:text; userId:nat64; primaryWallet:text; isVerified:bool; wallets:vec record {chain:text; wallet:text}; twitterId:nat64; chains:vec text; verifications:vec text}) query;
-    greet: (text) -> (text) query;
     handleEvent: (nat32, text) -> (null);
+    initEvmWalletAddress: () -> (text);
     scannerCallback: () -> (null);
     setContractAddresses: (record {contracts:record {"Base Mainnet":record {accountManager:text; GMCoin:opt text}; WorldChain:record {accountManager:text; GMCoin:opt text}}}) -> (null);
     setFarcasterConfig: (record {apiKeyEncrypted:text; apiUrl:opt text}) -> (null);

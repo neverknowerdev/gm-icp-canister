@@ -1,8 +1,8 @@
-import { query, update, IDL } from 'azle';
+import { query, update, init, postUpgrade, IDL, setTimer } from 'azle';
 import { processEvent } from './eventProcessor';
 import { initContracts } from './evmContracts/config';
 import { getUser, getUserByTwitterId, getUserByFarcasterId, getTwitterUsers as getTwitterUsersFromStore, getFarcasterUsers as getFarcasterUsersFromStore } from './userManagement/userStore';
-import { getEthereumAddress } from './evmContracts/thresholdSigning';
+import { getEthereumAddress, getCachedEthereumAddress, setCachedEthereumAddress } from './evmContracts/thresholdSigning';
 import { initializeScanner, scheduleScanner } from './scanner/scannerScheduler';
 import { scanAllChains } from './scanner/transactionScanner';
 import { initTwitterConfig } from './verification/twitterVerification';
@@ -47,6 +47,50 @@ export default class {
     }
 
     /**
+     * Initialize EVM wallet address asynchronously
+     * Helper function to avoid code duplication
+     */
+    private initializeEvmWalletAddress(): void {
+        try {
+            console.log('Setting timer to initialize EVM wallet address...');
+            // Set timer with 0 delay (in seconds) to run after init/postUpgrade completes
+            const timerId = setTimer(0, async () => {
+                try {
+                    console.log('[Timer callback] Computing EVM wallet address...');
+                    const address = await getEthereumAddress(); // This will cache it internally
+                    console.log(`[Timer callback] EVM wallet address initialized: ${address}`);
+                } catch (error: any) {
+                    console.error(`[Timer callback] Error initializing EVM wallet address: ${error}`);
+                    console.error(`[Timer callback] Error stack: ${error.stack || 'No stack trace'}`);
+                    console.warn('[Timer callback] EVM wallet address initialization failed. It will be computed on first access.');
+                }
+            });
+            console.log(`Timer set successfully with ID: ${timerId}`);
+        } catch (error: any) {
+            console.error(`Error setting timer for EVM wallet address: ${error}`);
+            console.error(`Error stack: ${error.stack || 'No stack trace'}`);
+        }
+    }
+
+    /**
+     * Init hook - runs on first canister deployment
+     * Used to initialize async operations like computing EVM wallet address
+     */
+    @init([])
+    init(): void {
+        this.initializeEvmWalletAddress();
+    }
+
+    /**
+     * Post-upgrade hook - runs after canister upgrade
+     * Used to initialize async operations like computing EVM wallet address
+     */
+    @postUpgrade([])
+    postUpgrade(): void {
+        this.initializeEvmWalletAddress();
+    }
+
+    /**
      * Scanner callback - called by ICP timer system
      * This is an internal method called automatically at the scheduled interval
      */
@@ -82,11 +126,6 @@ export default class {
             scheduleCleanup();
         }
         return null;
-    }
-
-    @query([IDL.Text], IDL.Text)
-    greet(name: string): string {
-        return `Hello, ${name}!`;
     }
 
     @update([IDL.Nat32, IDL.Text], IDL.Null)
@@ -355,14 +394,33 @@ export default class {
     /**
      * Get the Ethereum wallet address derived from the canister's threshold ECDSA public key
      * This is the address that the canister can use for signing transactions
+     * Returns the cached address computed during canister initialization
+     * Note: If called immediately after deployment, may not be ready yet (computed asynchronously)
      */
     @query([], IDL.Text)
-    async evmWalletAddress(): Promise<string> {
+    evmWalletAddress(): string {
+        const cached = getCachedEthereumAddress();
+        if (cached === null) {
+            throw new Error('EVM wallet address not yet initialized. Please call initEvmWalletAddress() update method first, or wait for automatic initialization to complete.');
+        }
+        return cached;
+    }
+
+    /**
+     * Manually initialize EVM wallet address (fallback if automatic initialization fails)
+     * This is an update method that computes and caches the address
+     * Call this if evmWalletAddress query returns an error
+     */
+    @update([], IDL.Text)
+    async initEvmWalletAddress(): Promise<string> {
         try {
-            return await getEthereumAddress();
+            console.log('Manually initializing EVM wallet address...');
+            const address = await getEthereumAddress(); // This will cache it internally
+            console.log(`EVM wallet address manually initialized: ${address}`);
+            return address;
         } catch (error: any) {
-            console.error(`Error getting EVM wallet address: ${error}`);
-            throw new Error(`Failed to get EVM wallet address: ${error.message || error}`);
+            console.error(`Error manually initializing EVM wallet address: ${error}`);
+            throw new Error(`Failed to initialize EVM wallet address: ${error.message || error}`);
         }
     }
 
@@ -395,4 +453,5 @@ export default class {
         return getTransactionStatus(chainId, txHash);
     }
 }
+
 

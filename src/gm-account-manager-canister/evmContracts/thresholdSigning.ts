@@ -2,7 +2,9 @@ import { call, IDL, Principal } from 'azle';
 import { keccak_256 } from '@noble/hashes/sha3.js';
 
 const MANAGEMENT_CANISTER = Principal.fromText('aaaaa-aa');
-const KEY_NAME = 'gm_account_manager_wallet';
+// Using 'key_1' which is available on IC mainnet
+// For production, you may want to create a custom key via NNS proposal
+const KEY_NAME = 'key_1';
 
 let keyId: {
     curve: { secp256k1: null } | { secp256r1: null };
@@ -149,12 +151,39 @@ export function deriveEthereumAddress(publicKey: Uint8Array): string {
     return address;
 }
 
+// Cache for EVM wallet address (computed once during canister initialization)
+let cachedEvmWalletAddress: string | null = null;
+
 /**
  * Gets the Ethereum wallet address derived from the threshold key's public key
+ * Uses cached value if available, otherwise computes it
  * @returns Ethereum address as hex string with 0x prefix
  */
 export async function getEthereumAddress(): Promise<string> {
+    // Return cached value if available
+    if (cachedEvmWalletAddress !== null) {
+        return cachedEvmWalletAddress;
+    }
+
+    // Compute and cache the address
     const publicKey = await getPublicKey();
-    return deriveEthereumAddress(publicKey);
+    cachedEvmWalletAddress = deriveEthereumAddress(publicKey);
+    return cachedEvmWalletAddress;
+}
+
+/**
+ * Get the cached EVM wallet address (synchronous, for query methods)
+ * @returns Cached Ethereum address, or null if not yet computed
+ */
+export function getCachedEthereumAddress(): string | null {
+    return cachedEvmWalletAddress;
+}
+
+/**
+ * Set the cached EVM wallet address (used during initialization)
+ * @param address - The Ethereum address to cache
+ */
+export function setCachedEthereumAddress(address: string): void {
+    cachedEvmWalletAddress = address;
 }
 
