@@ -53,6 +53,28 @@
           "name": "candid:service"
         }
       ]
+    },
+    "timelock-controller-canister": {
+      "build": "npx azle build timelock-controller-canister",
+      "candid": "src/timelock-controller-canister/timelock-controller-canister.did",
+      "gzip": true,
+      "main": "src/timelock-controller-canister/index.ts",
+      "tech_stack": {
+        "cdk": {
+          "azle": {}
+        },
+        "language": {
+          "javascript": {},
+          "typescript": {}
+        }
+      },
+      "type": "custom",
+      "wasm": ".azle/timelock-controller-canister/timelock-controller-canister.wasm",
+      "metadata": [
+        {
+          "name": "candid:service"
+        }
+      ]
     }
   },
   "defaults": {

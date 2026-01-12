@@ -1,5 +1,5 @@
 // Timelock utility for upgrade scheduling with delay
-// Similar to smart contract timelock, but adapted for ICP canisters
+// This is the core timelock logic for the Timelock Controller Canister
 
 import { StableBTreeMap, ic } from 'azle';
 
@@ -11,20 +11,22 @@ const MINIMUM_DELAY_NS = BigInt(24 * 60 * 60 * 1_000_000_000);
 
 export interface UpgradeProposal {
     proposalId: string;
+    targetCanisterId: string; // Principal ID of the canister to upgrade
     moduleHash: string; // Hash of the new WASM module
     scheduledTime: bigint; // Timestamp in nanoseconds when upgrade can be executed
     delay: bigint; // Delay period in nanoseconds
     proposer: string; // Principal ID of the proposer
     description?: string; // Optional description of the upgrade
+    executed: boolean; // Whether the upgrade has been executed
 }
 
 // Stable storage for timelock state
 // Key: proposalId, Value: UpgradeProposal
-const upgradeProposalsStorage = new StableBTreeMap<string, UpgradeProposal>(10);
+const upgradeProposalsStorage = new StableBTreeMap<string, UpgradeProposal>(0);
 
 // Storage for the configured delay (singleton)
 const TIMELOCK_DELAY_KEY = 'timelock_delay';
-const timelockDelayStorage = new StableBTreeMap<string, bigint>(11);
+const timelockDelayStorage = new StableBTreeMap<string, bigint>(1);
 
 /**
  * Get current time in nanoseconds
@@ -69,7 +71,6 @@ export function getTimelockDelay(): bigint {
 
 /**
  * Set the timelock delay (only allowed if >= 1 day)
- * Note: This itself might want to be protected by timelock in production
  */
 export function setTimelockDelay(newDelay: bigint): void {
     if (newDelay < MINIMUM_DELAY_NS) {
@@ -82,6 +83,7 @@ export function setTimelockDelay(newDelay: bigint): void {
 /**
  * Schedule an upgrade proposal
  * @param proposalId Unique identifier for this upgrade proposal
+ * @param targetCanisterId Principal ID of the canister to upgrade
  * @param moduleHash Hash of the new WASM module to be deployed
  * @param proposer Principal ID of the person proposing the upgrade
  * @param description Optional description of what the upgrade does
@@ -89,12 +91,13 @@ export function setTimelockDelay(newDelay: bigint): void {
  */
 export function scheduleUpgrade(
     proposalId: string,
+    targetCanisterId: string,
     moduleHash: string,
     proposer: string,
     description?: string
 ): void {
-    if (!proposalId || !moduleHash) {
-        throw new Error('Proposal ID and module hash are required');
+    if (!proposalId || !targetCanisterId || !moduleHash) {
+        throw new Error('Proposal ID, target canister ID, and module hash are required');
     }
 
     // Check if proposal already exists
@@ -112,17 +115,20 @@ export function scheduleUpgrade(
 
     const proposal: UpgradeProposal = {
         proposalId,
+        targetCanisterId,
         moduleHash,
         scheduledTime,
         delay,
         proposer,
         description,
+        executed: false,
     };
 
     upgradeProposalsStorage.insert(proposalId, proposal);
 
     console.log(`Upgrade proposal scheduled:`);
     console.log(`  Proposal ID: ${proposalId}`);
+    console.log(`  Target Canister: ${targetCanisterId}`);
     console.log(`  Module Hash: ${moduleHash}`);
     console.log(`  Scheduled Time: ${scheduledTime} (${new Date(Number(scheduledTime / BigInt(1_000_000))).toISOString()})`);
     console.log(`  Delay: ${delay}ns (${Number(delay / BigInt(1_000_000_000)) / (24 * 60 * 60)} days)`);
@@ -143,7 +149,7 @@ export function isUpgradeReady(proposalId: string): boolean {
     const proposal = proposals[0];
     const currentTime = getCurrentTime();
 
-    return currentTime >= proposal.scheduledTime;
+    return currentTime >= proposal.scheduledTime && !proposal.executed;
 }
 
 /**
@@ -160,18 +166,23 @@ export function getUpgradeProposal(proposalId: string): UpgradeProposal | null {
 }
 
 /**
- * Get all upgrade proposals
- * @returns Array of all upgrade proposals
+ * Get all upgrade proposals for a specific canister
+ * @param targetCanisterId The canister ID to filter by (optional)
+ * @returns Array of upgrade proposals
  */
-export function getAllUpgradeProposals(): UpgradeProposal[] {
-    return upgradeProposalsStorage.values();
+export function getAllUpgradeProposals(targetCanisterId?: string): UpgradeProposal[] {
+    const allProposals = upgradeProposalsStorage.values();
+    if (!targetCanisterId) {
+        return allProposals;
+    }
+    return allProposals.filter(p => p.targetCanisterId === targetCanisterId);
 }
 
 /**
  * Check if an upgrade can be executed (validates proposal and time delay)
  * @param proposalId The proposal ID
  * @param moduleHash The module hash to verify against the proposal
- * @throws Error if proposal doesn't exist, module hash doesn't match, or delay hasn't passed
+ * @throws Error if proposal doesn't exist, module hash doesn't match, delay hasn't passed, or already executed
  */
 export function checkTimeDelay(proposalId: string, moduleHash: string): void {
     const proposals = upgradeProposalsStorage.get(proposalId);
@@ -180,6 +191,10 @@ export function checkTimeDelay(proposalId: string, moduleHash: string): void {
     }
 
     const proposal = proposals[0];
+
+    if (proposal.executed) {
+        throw new Error(`Upgrade proposal ${proposalId} has already been executed`);
+    }
 
     if (proposal.moduleHash !== moduleHash) {
         throw new Error(`Module hash mismatch. Expected: ${proposal.moduleHash}, Got: ${moduleHash}`);
@@ -197,7 +212,23 @@ export function checkTimeDelay(proposalId: string, moduleHash: string): void {
 }
 
 /**
- * Clear an upgrade proposal after execution
+ * Mark an upgrade proposal as executed
+ * @param proposalId The proposal ID to mark as executed
+ */
+export function markUpgradeExecuted(proposalId: string): void {
+    const proposals = upgradeProposalsStorage.get(proposalId);
+    if (proposals.length === 0) {
+        throw new Error(`Upgrade proposal with ID ${proposalId} not found`);
+    }
+
+    const proposal = proposals[0];
+    proposal.executed = true;
+    upgradeProposalsStorage.insert(proposalId, proposal);
+    console.log(`Upgrade proposal ${proposalId} marked as executed`);
+}
+
+/**
+ * Clear an upgrade proposal (removes it)
  * @param proposalId The proposal ID to clear
  */
 export function clearUpgradeProposal(proposalId: string): void {
@@ -229,6 +260,11 @@ export function getTimeRemaining(proposalId: string): bigint {
     }
 
     const proposal = proposals[0];
+
+    if (proposal.executed) {
+        return BigInt(0);
+    }
+
     const currentTime = getCurrentTime();
 
     if (currentTime >= proposal.scheduledTime) {
