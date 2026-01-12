@@ -6135,6 +6135,16 @@ function throwIfMethodAlreadyDefined(methodName, isDefined) {
   }
 }
 
+// node_modules/azle/src/stable/lib/canister_methods/init.ts
+function init(param1, param2) {
+  return decoratorArgumentsHandler("init", param1, param2);
+}
+
+// node_modules/azle/src/stable/lib/canister_methods/post_upgrade.ts
+function postUpgrade(param1, param2) {
+  return decoratorArgumentsHandler("postUpgrade", param1, param2);
+}
+
 // node_modules/azle/src/stable/lib/canister_methods/query.ts
 function query(param1, param2, param3) {
   return decoratorArgumentsHandler("query", param1, param2, param3);
@@ -12526,7 +12536,7 @@ function encodeCreateOrUpdateUser(userId, wallet, twitterId, farcasterId, wallet
 
 // src/gm-account-manager-canister/evmContracts/thresholdSigning.ts
 var MANAGEMENT_CANISTER = Principal.fromText("aaaaa-aa");
-var KEY_NAME = "gm_account_manager_wallet";
+var KEY_NAME = "key_1";
 var keyId = {
   curve: { secp256k1: null },
   name: KEY_NAME
@@ -12537,9 +12547,19 @@ var derivationPath = [
 async function getPublicKey() {
   try {
     const derivationPathBytes = derivationPath.map((p) => Array.from(p));
+    let canisterIdOpt = [];
+    try {
+      if (typeof ic !== "undefined" && ic.id) {
+        const selfPrincipal = ic.id();
+        canisterIdOpt = [selfPrincipal];
+      }
+    } catch (e) {
+      console.warn("Could not get canister ID, using None for canister_id");
+      canisterIdOpt = [];
+    }
     const result = await call(MANAGEMENT_CANISTER, "ecdsa_public_key", {
       args: [{
-        canister_id: [],
+        canister_id: canisterIdOpt,
         derivation_path: derivationPathBytes,
         key_id: keyId
       }],
@@ -12562,6 +12582,10 @@ async function getPublicKey() {
     return new Uint8Array(result.public_key);
   } catch (error) {
     console.error(`Error getting public key: ${error}`);
+    console.error(`Error details: ${error.message || error.toString()}`);
+    if (error.stack) {
+      console.error(`Error stack: ${error.stack}`);
+    }
     throw error;
   }
 }
@@ -12603,6 +12627,10 @@ async function signWithThresholdEcdsa(data) {
     return signatureBytes;
   } catch (error) {
     console.error(`Error signing with threshold ECDSA: ${error}`);
+    console.error(`Error details: ${error.message || error.toString()}`);
+    if (error.stack) {
+      console.error(`Error stack: ${error.stack}`);
+    }
     throw new Error(`Threshold ECDSA signing failed: ${error.message || error}`);
   }
 }
@@ -12625,9 +12653,17 @@ function deriveEthereumAddress(publicKey) {
   }
   return address;
 }
+var cachedEvmWalletAddress = null;
 async function getEthereumAddress() {
+  if (cachedEvmWalletAddress !== null) {
+    return cachedEvmWalletAddress;
+  }
   const publicKey = await getPublicKey();
-  return deriveEthereumAddress(publicKey);
+  cachedEvmWalletAddress = deriveEthereumAddress(publicKey);
+  return cachedEvmWalletAddress;
+}
+function getCachedEthereumAddress() {
+  return cachedEvmWalletAddress;
 }
 
 // src/gm-account-manager-canister/evmContracts/evmTransaction.ts
@@ -14474,8 +14510,8 @@ function decryptWithKey(privateKey, encryptedSecret) {
 }
 
 // src/gm-account-manager-canister/index.ts
-var _getTransactionStatus_dec, _encryptionPublicKey_dec, _evmWalletAddress_dec, _getFarcasterUsers_dec, _getTwitterUsers_dec, _getUsers_dec, _getUserByFarcasterId_dec, _getUserByTwitterId_dec, _getUser_dec, _setFarcasterConfig_dec, _setTwitterConfig_dec, _setContractAddresses_dec, _handleEvent_dec, _greet_dec, _cleanupCallback_dec, _scannerCallback_dec, _init;
-_scannerCallback_dec = [update([], idl_exports.Null)], _cleanupCallback_dec = [update([], idl_exports.Null)], _greet_dec = [query([idl_exports.Text], idl_exports.Text)], _handleEvent_dec = [update([idl_exports.Nat32, idl_exports.Text], idl_exports.Null)], _setContractAddresses_dec = [update([idl_exports.Record({
+var _getTransactionStatus_dec, _encryptionPublicKey_dec, _initEvmWalletAddress_dec, _evmWalletAddress_dec, _getFarcasterUsers_dec, _getTwitterUsers_dec, _getUsers_dec, _getUserByFarcasterId_dec, _getUserByTwitterId_dec, _getUser_dec, _setFarcasterConfig_dec, _setTwitterConfig_dec, _setContractAddresses_dec, _handleEvent_dec, _cleanupCallback_dec, _scannerCallback_dec, _postUpgrade_dec, _init_dec, _init;
+_init_dec = [init([])], _postUpgrade_dec = [postUpgrade([])], _scannerCallback_dec = [update([], idl_exports.Null)], _cleanupCallback_dec = [update([], idl_exports.Null)], _handleEvent_dec = [update([idl_exports.Nat32, idl_exports.Text], idl_exports.Null)], _setContractAddresses_dec = [update([idl_exports.Record({
   contracts: idl_exports.Record({
     "Base Mainnet": idl_exports.Record({
       accountManager: idl_exports.Text,
@@ -14553,7 +14589,7 @@ _scannerCallback_dec = [update([], idl_exports.Null)], _cleanupCallback_dec = [u
   userId: idl_exports.Nat64,
   accountId: idl_exports.Nat64,
   walletAddress: idl_exports.Text
-})))], _evmWalletAddress_dec = [query([], idl_exports.Text)], _encryptionPublicKey_dec = [query([], idl_exports.Text)], _getTransactionStatus_dec = [query([idl_exports.Nat32, idl_exports.Text], idl_exports.Text)];
+})))], _evmWalletAddress_dec = [query([], idl_exports.Text)], _initEvmWalletAddress_dec = [update([], idl_exports.Text)], _encryptionPublicKey_dec = [query([], idl_exports.Text)], _getTransactionStatus_dec = [query([idl_exports.Nat32, idl_exports.Text], idl_exports.Text)];
 var gm_account_manager_canister_default = class {
   constructor() {
     __runInitializers(_init, 5, this);
@@ -14572,6 +14608,36 @@ var gm_account_manager_canister_default = class {
     } catch (error) {
       console.error(`Error initializing encryption: ${error}`);
     }
+  }
+  /**
+   * Initialize EVM wallet address asynchronously
+   * Helper function to avoid code duplication
+   */
+  initializeEvmWalletAddress() {
+    try {
+      console.log("Setting timer to initialize EVM wallet address...");
+      const timerId = setTimer(0, async () => {
+        try {
+          console.log("[Timer callback] Computing EVM wallet address...");
+          const address = await getEthereumAddress();
+          console.log(`[Timer callback] EVM wallet address initialized: ${address}`);
+        } catch (error) {
+          console.error(`[Timer callback] Error initializing EVM wallet address: ${error}`);
+          console.error(`[Timer callback] Error stack: ${error.stack || "No stack trace"}`);
+          console.warn("[Timer callback] EVM wallet address initialization failed. It will be computed on first access.");
+        }
+      });
+      console.log(`Timer set successfully with ID: ${timerId}`);
+    } catch (error) {
+      console.error(`Error setting timer for EVM wallet address: ${error}`);
+      console.error(`Error stack: ${error.stack || "No stack trace"}`);
+    }
+  }
+  init() {
+    this.initializeEvmWalletAddress();
+  }
+  postUpgrade() {
+    this.initializeEvmWalletAddress();
   }
   async scannerCallback() {
     console.log("Scanner callback fired - scanning for unprocessed transactions...");
@@ -14594,9 +14660,6 @@ var gm_account_manager_canister_default = class {
       scheduleCleanup();
     }
     return null;
-  }
-  greet(name) {
-    return `Hello, ${name}!`;
   }
   async handleEvent(chain2, transactionId) {
     try {
@@ -14736,12 +14799,22 @@ var gm_account_manager_canister_default = class {
       walletAddress: r.walletAddress
     }));
   }
-  async evmWalletAddress() {
+  evmWalletAddress() {
+    const cached = getCachedEthereumAddress();
+    if (cached === null) {
+      throw new Error("EVM wallet address not yet initialized. Please call initEvmWalletAddress() update method first, or wait for automatic initialization to complete.");
+    }
+    return cached;
+  }
+  async initEvmWalletAddress() {
     try {
-      return await getEthereumAddress();
+      console.log("Manually initializing EVM wallet address...");
+      const address = await getEthereumAddress();
+      console.log(`EVM wallet address manually initialized: ${address}`);
+      return address;
     } catch (error) {
-      console.error(`Error getting EVM wallet address: ${error}`);
-      throw new Error(`Failed to get EVM wallet address: ${error.message || error}`);
+      console.error(`Error manually initializing EVM wallet address: ${error}`);
+      throw new Error(`Failed to initialize EVM wallet address: ${error.message || error}`);
     }
   }
   encryptionPublicKey() {
@@ -14760,9 +14833,10 @@ var gm_account_manager_canister_default = class {
   }
 };
 _init = __decoratorStart(null);
+__decorateElement(_init, 1, "init", _init_dec, gm_account_manager_canister_default);
+__decorateElement(_init, 1, "postUpgrade", _postUpgrade_dec, gm_account_manager_canister_default);
 __decorateElement(_init, 1, "scannerCallback", _scannerCallback_dec, gm_account_manager_canister_default);
 __decorateElement(_init, 1, "cleanupCallback", _cleanupCallback_dec, gm_account_manager_canister_default);
-__decorateElement(_init, 1, "greet", _greet_dec, gm_account_manager_canister_default);
 __decorateElement(_init, 1, "handleEvent", _handleEvent_dec, gm_account_manager_canister_default);
 __decorateElement(_init, 1, "setContractAddresses", _setContractAddresses_dec, gm_account_manager_canister_default);
 __decorateElement(_init, 1, "setTwitterConfig", _setTwitterConfig_dec, gm_account_manager_canister_default);
@@ -14774,6 +14848,7 @@ __decorateElement(_init, 1, "getUsers", _getUsers_dec, gm_account_manager_canist
 __decorateElement(_init, 1, "getTwitterUsers", _getTwitterUsers_dec, gm_account_manager_canister_default);
 __decorateElement(_init, 1, "getFarcasterUsers", _getFarcasterUsers_dec, gm_account_manager_canister_default);
 __decorateElement(_init, 1, "evmWalletAddress", _evmWalletAddress_dec, gm_account_manager_canister_default);
+__decorateElement(_init, 1, "initEvmWalletAddress", _initEvmWalletAddress_dec, gm_account_manager_canister_default);
 __decorateElement(_init, 1, "encryptionPublicKey", _encryptionPublicKey_dec, gm_account_manager_canister_default);
 __decorateElement(_init, 1, "getTransactionStatus", _getTransactionStatus_dec, gm_account_manager_canister_default);
 __decoratorMetadata(_init, gm_account_manager_canister_default);

@@ -1,6 +1,9 @@
 import { call, IDL, Principal } from 'azle';
 import { keccak_256 } from '@noble/hashes/sha3.js';
 
+// Access ic from global scope (available in ICP canister runtime)
+declare const ic: any;
+
 const MANAGEMENT_CANISTER = Principal.fromText('aaaaa-aa');
 // Using 'key_1' which is available on IC mainnet
 // For production, you may want to create a custom key via NNS proposal
@@ -32,10 +35,25 @@ export function setDerivationPath(path: Uint8Array[]): void {
 export async function getPublicKey(): Promise<Uint8Array> {
     try {
         const derivationPathBytes = derivationPath.map(p => Array.from(p));
+        
+        // Get the canister's own principal
+        // If ic is not available (e.g., in tests), use empty array (None)
+        // In Candid, Opt(Principal) is represented as Principal[] (Some) or [] (None)
+        let canisterIdOpt: any[] = [];
+        try {
+            if (typeof ic !== 'undefined' && ic.id) {
+                const selfPrincipal = ic.id();
+                canisterIdOpt = [selfPrincipal];
+            }
+        } catch (e) {
+            // If we can't get the canister ID, use empty array (None)
+            console.warn('Could not get canister ID, using None for canister_id');
+            canisterIdOpt = [];
+        }
 
         const result = await call(MANAGEMENT_CANISTER, 'ecdsa_public_key', {
             args: [{
-                canister_id: [],
+                canister_id: canisterIdOpt,
                 derivation_path: derivationPathBytes,
                 key_id: keyId,
             }],
@@ -59,6 +77,10 @@ export async function getPublicKey(): Promise<Uint8Array> {
         return new Uint8Array(result.public_key);
     } catch (error: any) {
         console.error(`Error getting public key: ${error}`);
+        console.error(`Error details: ${error.message || error.toString()}`);
+        if (error.stack) {
+            console.error(`Error stack: ${error.stack}`);
+        }
         throw error;
     }
 }
@@ -112,6 +134,10 @@ export async function signWithThresholdEcdsa(data: Uint8Array): Promise<Uint8Arr
         return signatureBytes;
     } catch (error: any) {
         console.error(`Error signing with threshold ECDSA: ${error}`);
+        console.error(`Error details: ${error.message || error.toString()}`);
+        if (error.stack) {
+            console.error(`Error stack: ${error.stack}`);
+        }
         throw new Error(`Threshold ECDSA signing failed: ${error.message || error}`);
     }
 }
