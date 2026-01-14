@@ -6790,9 +6790,11 @@ var RpcConfig = idl_exports.Record({
 function getRpcServices(chain2) {
   switch (chain2) {
     case CHAIN_BASE_MAINNET:
-      return { BaseMainnet: null };
+      return { BaseMainnet: [] };
+    // Empty array represents Opt::None
     case CHAIN_WORLDCHAIN:
-      return { WorldChain: null };
+      return { WorldChain: [] };
+    // Empty array represents Opt::None
     default:
       throw new Error(`Unsupported chain ID: ${chain2}`);
   }
@@ -6952,12 +6954,59 @@ async function fetchTransactionReceipt(chain2, transactionId) {
         cumulativeGasUsed: receipt.cumulativeGasUsed
       };
     } else if ("Err" in receiptResult) {
-      console.error(`RPC Error: ${JSON.stringify(receiptResult.Err)}`);
+      const err = receiptResult.Err;
+      let errMsg = "RPC Error: ";
+      if (err && typeof err === "object") {
+        if ("JsonRpcError" in err) {
+          const jrpcErr = err.JsonRpcError;
+          errMsg += `JsonRpcError(code: ${jrpcErr?.code || "?"}, message: ${jrpcErr?.message || "Unknown"})`;
+        } else if ("ProviderError" in err) {
+          const provErr = err.ProviderError;
+          if (provErr && typeof provErr === "object") {
+            if ("TooFewCycles" in provErr) {
+              errMsg += `ProviderError: TooFewCycles(expected: ${provErr.TooFewCycles?.expected || "?"}, received: ${provErr.TooFewCycles?.received || "?"})`;
+            } else if ("MissingRequiredProvider" in provErr) {
+              errMsg += `ProviderError: MissingRequiredProvider`;
+            } else if ("ProviderNotFound" in provErr) {
+              errMsg += `ProviderError: ProviderNotFound`;
+            } else if ("NoPermission" in provErr) {
+              errMsg += `ProviderError: NoPermission`;
+            } else if ("InvalidRpcConfig" in provErr) {
+              errMsg += `ProviderError: InvalidRpcConfig(${provErr.InvalidRpcConfig || "?"})`;
+            } else {
+              errMsg += `ProviderError: ${String(provErr)}`;
+            }
+          } else {
+            errMsg += `ProviderError: ${String(provErr)}`;
+          }
+        } else if ("ValidationError" in err) {
+          const valErr = err.ValidationError;
+          if (valErr && typeof valErr === "object") {
+            if ("Custom" in valErr) {
+              errMsg += `ValidationError: Custom(${valErr.Custom || "?"})`;
+            } else if ("InvalidHex" in valErr) {
+              errMsg += `ValidationError: InvalidHex(${valErr.InvalidHex || "?"})`;
+            } else {
+              errMsg += `ValidationError: ${String(valErr)}`;
+            }
+          } else {
+            errMsg += `ValidationError: ${String(valErr)}`;
+          }
+        } else if ("HttpOutcallError" in err) {
+          errMsg += `HttpOutcallError: ${String(err.HttpOutcallError)}`;
+        } else {
+          errMsg += String(err);
+        }
+      } else {
+        errMsg += String(err);
+      }
+      console.error(errMsg);
       return null;
     }
     return null;
   } catch (error) {
-    console.error(`Error fetching transaction receipt: ${error}`);
+    const errorStr = error?.toString() || String(error);
+    console.error(`Error fetching transaction receipt: ${errorStr}`);
     return null;
   }
 }
@@ -13391,19 +13440,25 @@ async function processEvent(chain2, transactionId) {
 }
 
 // src/gm-account-manager-canister/scanner/scannerScheduler.ts
+var SCANNER_CALLBACK_METHOD = "scannerCallback";
 var SCAN_INTERVAL_MINUTES = 60;
-var SCAN_INTERVAL_NS = BigInt(SCAN_INTERVAL_MINUTES * 60 * 1e9);
 var isScheduled = false;
+function getNextScanTimestamp() {
+  const nowMs = Date.now();
+  const delayMs = SCAN_INTERVAL_MINUTES * 60 * 1e3;
+  return BigInt((nowMs + delayMs) * 1e6);
+}
 function scheduleScanner() {
   try {
-    const durationNs = SCAN_INTERVAL_NS;
-    try {
-      setTimer(durationNs, () => {
-        console.log("Scanner timer triggered");
-      });
+    const timestampNs = getNextScanTimestamp();
+    if (typeof globalThis.ic !== "undefined" && globalThis.ic.setTimer) {
+      globalThis.ic.setTimer(timestampNs, SCANNER_CALLBACK_METHOD);
       isScheduled = true;
-      console.log(`Scanner scheduled for next run in ${SCAN_INTERVAL_MINUTES} minutes`);
-    } catch {
+      const delaySeconds = Number(timestampNs - BigInt(Date.now() * 1e6)) / 1e9;
+      const delayMinutes = delaySeconds / 60;
+      console.log(`Scanner scheduled for next run in ${delayMinutes.toFixed(2)} minutes`);
+    } else {
+      console.warn(`[NOTE] Call ic.setTimer(${timestampNs}) to call ${SCANNER_CALLBACK_METHOD} method`);
       console.warn(`Scanner will not run automatically - timer functionality not available`);
     }
   } catch (error) {

@@ -1,33 +1,37 @@
 // Scanner Scheduler - manages the periodic transaction scanner
 
-import { setTimer } from 'azle';
-
 const SCANNER_CALLBACK_METHOD = 'scannerCallback';
-const SCAN_INTERVAL_MINUTES = 60; // Scan every 5 minutes (configurable)
-const SCAN_INTERVAL_NS = BigInt(SCAN_INTERVAL_MINUTES * 60 * 1_000_000_000); // Convert to nanoseconds
+// NOTE: Keep this fairly large on mainnet to control cycle burn from EVM RPC calls.
+const SCAN_INTERVAL_MINUTES = 60; // Scan every 60 minutes (configurable)
 
 let isScheduled = false;
+
+/**
+ * Calculate absolute timestamp (nanoseconds since Unix epoch) for next scan run
+ */
+function getNextScanTimestamp(): bigint {
+    const nowMs = Date.now();
+    const delayMs = SCAN_INTERVAL_MINUTES * 60 * 1000;
+    return BigInt((nowMs + delayMs) * 1_000_000);
+}
 
 /**
  * Schedule the next scanner run
  */
 export function scheduleScanner(): void {
     try {
-        // Schedule scanner using Azle's setTimer
-        // Duration is in nanoseconds
-        const durationNs = SCAN_INTERVAL_NS;
+        const timestampNs = getNextScanTimestamp();
 
-        // Use setTimer to schedule scanner callback
-        // setTimer returns a timer ID that can be used to cancel the timer
-        try {
-            setTimer(durationNs, () => {
-                // This callback will be called after the delay
-                // The actual scanner logic should be triggered here
-                console.log('Scanner timer triggered');
-            });
+        // Use IC timer to invoke the canister method by name (same pattern as storageCleanerScheduler)
+        if (typeof (globalThis as any).ic !== 'undefined' && (globalThis as any).ic.setTimer) {
+            (globalThis as any).ic.setTimer(timestampNs, SCANNER_CALLBACK_METHOD);
             isScheduled = true;
-            console.log(`Scanner scheduled for next run in ${SCAN_INTERVAL_MINUTES} minutes`);
-        } catch {
+
+            const delaySeconds = Number(timestampNs - BigInt(Date.now() * 1_000_000)) / 1_000_000_000;
+            const delayMinutes = delaySeconds / 60;
+            console.log(`Scanner scheduled for next run in ${delayMinutes.toFixed(2)} minutes`);
+        } else {
+            console.warn(`[NOTE] Call ic.setTimer(${timestampNs}) to call ${SCANNER_CALLBACK_METHOD} method`);
             console.warn(`Scanner will not run automatically - timer functionality not available`);
         }
     } catch (error: any) {

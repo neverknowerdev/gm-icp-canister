@@ -31,13 +31,14 @@ export const RpcConfig = IDL.Record({
 
 /**
  * Maps chain ID to RPC services variant
+ * Note: Opt<Vec<L2MainnetService>> is represented as [] (empty array = None) or [services] (array with elements = Some)
  */
 export function getRpcServices(chain: Chain): any {
     switch (chain) {
         case CHAIN_BASE_MAINNET:
-            return { BaseMainnet: null };
+            return { BaseMainnet: [] }; // Empty array represents Opt::None
         case CHAIN_WORLDCHAIN:
-            return { WorldChain: null };
+            return { WorldChain: [] }; // Empty array represents Opt::None
         default:
             throw new Error(`Unsupported chain ID: ${chain}`);
     }
@@ -225,13 +226,63 @@ export async function fetchTransactionReceipt(
                 cumulativeGasUsed: receipt.cumulativeGasUsed,
             };
         } else if ('Err' in receiptResult) {
-            console.error(`RPC Error: ${JSON.stringify(receiptResult.Err)}`);
+            // Log error details without JSON.stringify (to avoid BigInt issues)
+            const err = receiptResult.Err;
+            let errMsg = 'RPC Error: ';
+            if (err && typeof err === 'object') {
+                // Try to extract meaningful error information
+                if ('JsonRpcError' in err) {
+                    const jrpcErr = err.JsonRpcError;
+                    errMsg += `JsonRpcError(code: ${jrpcErr?.code || '?'}, message: ${jrpcErr?.message || 'Unknown'})`;
+                } else if ('ProviderError' in err) {
+                    const provErr = err.ProviderError;
+                    if (provErr && typeof provErr === 'object') {
+                        if ('TooFewCycles' in provErr) {
+                            errMsg += `ProviderError: TooFewCycles(expected: ${provErr.TooFewCycles?.expected || '?'}, received: ${provErr.TooFewCycles?.received || '?'})`;
+                        } else if ('MissingRequiredProvider' in provErr) {
+                            errMsg += `ProviderError: MissingRequiredProvider`;
+                        } else if ('ProviderNotFound' in provErr) {
+                            errMsg += `ProviderError: ProviderNotFound`;
+                        } else if ('NoPermission' in provErr) {
+                            errMsg += `ProviderError: NoPermission`;
+                        } else if ('InvalidRpcConfig' in provErr) {
+                            errMsg += `ProviderError: InvalidRpcConfig(${provErr.InvalidRpcConfig || '?'})`;
+                        } else {
+                            errMsg += `ProviderError: ${String(provErr)}`;
+                        }
+                    } else {
+                        errMsg += `ProviderError: ${String(provErr)}`;
+                    }
+                } else if ('ValidationError' in err) {
+                    const valErr = err.ValidationError;
+                    if (valErr && typeof valErr === 'object') {
+                        if ('Custom' in valErr) {
+                            errMsg += `ValidationError: Custom(${valErr.Custom || '?'})`;
+                        } else if ('InvalidHex' in valErr) {
+                            errMsg += `ValidationError: InvalidHex(${valErr.InvalidHex || '?'})`;
+                        } else {
+                            errMsg += `ValidationError: ${String(valErr)}`;
+                        }
+                    } else {
+                        errMsg += `ValidationError: ${String(valErr)}`;
+                    }
+                } else if ('HttpOutcallError' in err) {
+                    errMsg += `HttpOutcallError: ${String(err.HttpOutcallError)}`;
+                } else {
+                    errMsg += String(err);
+                }
+            } else {
+                errMsg += String(err);
+            }
+            console.error(errMsg);
             return null;
         }
 
         return null;
     } catch (error: any) {
-        console.error(`Error fetching transaction receipt: ${error}`);
+        // Convert error to string to avoid BigInt serialization issues
+        const errorStr = error?.toString() || String(error);
+        console.error(`Error fetching transaction receipt: ${errorStr}`);
         return null;
     }
 }
