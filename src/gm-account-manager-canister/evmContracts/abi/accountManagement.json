@@ -6,11 +6,21 @@
             {
                 "name": "wallet",
                 "type": "address",
-                "indexed": true
+                "indexed": false
             },
             {
                 "name": "authCode",
                 "type": "string",
+                "indexed": false
+            },
+            {
+                "name": "tweetID",
+                "type": "string",
+                "indexed": false
+            },
+            {
+                "name": "twitterID",
+                "type": "uint256",
                 "indexed": false
             }
         ]

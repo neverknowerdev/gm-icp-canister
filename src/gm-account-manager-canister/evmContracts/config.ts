@@ -45,17 +45,18 @@ function initEventSignatures(): void {
             eventSignaturesCache[eventName] = signature;
         }
     }
-    console.log(`Initialized ${Object.keys(eventSignaturesCache).length} event signatures from ABI`);
 }
 
 /**
  * Ensure config is initialized with defaults
+ * NOTE: Do NOT clear contracts here - they may have been set via setContractAddresses
+ * Only initialize event signatures if not already done
  */
 function ensureInitialized(): void {
     if (!configInitialized) {
-        // Initialize with empty contracts
-        contractsByChainId.clear();
-        // Initialize event signatures from ABI
+        // Initialize event signatures from ABI (if not already initialized)
+        // Do NOT clear contracts - they may have been set via setContractAddresses
+        // contractsByChainId should persist across upgrades if using stable memory
         initEventSignatures();
         configInitialized = true;
     }
@@ -99,11 +100,14 @@ export function getContracts(chain: Chain): ChainContracts | null {
 export function getContractAddresses(chain: Chain): string[] {
     const contracts = getContracts(chain);
     if (!contracts) return [];
-    const addresses = [contracts.accountManager];
-    if (contracts.GMCoin) {
+    const addresses: string[] = [];
+    if (contracts.accountManager && typeof contracts.accountManager === 'string' && contracts.accountManager.trim() !== '') {
+        addresses.push(contracts.accountManager);
+    }
+    if (contracts.GMCoin && typeof contracts.GMCoin === 'string' && contracts.GMCoin.trim() !== '') {
         addresses.push(contracts.GMCoin);
     }
-    return addresses.filter(addr => addr !== '');
+    return addresses.filter(addr => addr && typeof addr === 'string' && addr.trim() !== '');
 }
 
 /**

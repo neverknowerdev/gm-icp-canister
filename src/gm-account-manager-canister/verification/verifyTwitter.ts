@@ -22,40 +22,61 @@ import { processUserEvent } from '../userEvents';
  * 
  * @throws Error if any step fails
  */
+function safeStringify(obj: any): string {
+    return JSON.stringify(obj, (key, value) => {
+        if (typeof value === 'bigint') {
+            return value.toString();
+        }
+        return value;
+    });
+}
+
 export async function verifyTwitter(
     event: ParsedEvent,
     chain: Chain,
     transactionFrom: string
 ): Promise<void> {
     console.log(`Processing VerifyTwitterByAuthCodeRequested event`);
-    console.log(`Event args: ${JSON.stringify(event.args)}`);
+    console.log(`Event args: ${safeStringify(event.args)}`);
+    console.log(`Transaction from: ${transactionFrom}`);
+    console.log(`Event args keys: ${Object.keys(event.args || {}).join(', ')}`);
 
-    const wallet = transactionFrom.toLowerCase();
+    // Extract values - check all possible field names
+    const authCode = event.args.authCode || event.args.auth_code || event.args[1];
+    const tweetID = event.args.tweetID || event.args.tweet_id || event.args[2];
+    const twitterUserID = event.args.twitterID || event.args.twitter_id || event.args.userID || event.args.user_id || event.args[3];
+    // Use wallet from event args (user's wallet), not transactionFrom (account abstraction wallet)
+    const wallet = (event.args.wallet || transactionFrom || '').toLowerCase();
 
-    const authCode = event.args.authCode;
-    const tweetID = event.args.tweetID;
-    const twitterUserID = event.args.userID; // This is the Twitter user ID
+    console.log(`Extracted values - wallet: ${wallet}, authCode: ${authCode} (type: ${typeof authCode}), tweetID: ${tweetID} (type: ${typeof tweetID}), twitterUserID: ${twitterUserID} (type: ${typeof twitterUserID})`);
+
+    if (!wallet || !wallet.startsWith('0x')) {
+        throw new Error(`No valid wallet found in event. Event must contain wallet address. Got: ${wallet}`);
+    }
 
     if (!authCode || typeof authCode !== 'string') {
-        throw new Error('No auth code found in event. Event must contain authCode string.');
+        throw new Error(`No auth code found in event. Event must contain authCode string. Got: ${typeof authCode}, value: ${authCode}`);
     }
 
     if (!tweetID || typeof tweetID !== 'string') {
-        throw new Error('No tweet ID found in event. Event must contain tweetID string.');
+        throw new Error(`No tweet ID found in event. Event must contain tweetID string. Got: ${typeof tweetID}, value: ${tweetID}`);
     }
 
-    if (!twitterUserID || typeof twitterUserID !== 'string') {
-        throw new Error('No user ID found in event. Event must contain userID string.');
+    if (!twitterUserID || (typeof twitterUserID !== 'string' && typeof twitterUserID !== 'bigint' && typeof twitterUserID !== 'number')) {
+        throw new Error(`No user ID found in event. Event must contain twitterID. Got: ${typeof twitterUserID}, value: ${twitterUserID}`);
     }
+    
+    // Convert to string if it's a number or bigint
+    const twitterUserIDStr = typeof twitterUserID === 'string' ? twitterUserID : String(twitterUserID);
 
-    console.log(`Verifying Twitter auth code: ${authCode}, tweetID: ${tweetID}, twitterUserID: ${twitterUserID}`);
+    console.log(`Verifying Twitter auth code: ${authCode}, tweetID: ${tweetID}, twitterUserID: ${twitterUserIDStr}, wallet: ${wallet}`);
 
     // Verify auth code with Twitter API
-    await verifyTwitterAuthCode(authCode, tweetID, twitterUserID, wallet);
+    await verifyTwitterAuthCode(authCode, tweetID, twitterUserIDStr, wallet);
     console.log(`Successfully verified Twitter auth code`);
 
     // Convert Twitter user ID to bigint
-    const twitterId = BigInt(twitterUserID);
+    const twitterId = BigInt(twitterUserIDStr);
 
     const contractAddress = getContracts(chain)?.accountManager;
     if (!contractAddress) {

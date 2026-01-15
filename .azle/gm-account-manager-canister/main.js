@@ -6791,10 +6791,8 @@ function getRpcServices(chain2) {
   switch (chain2) {
     case CHAIN_BASE_MAINNET:
       return { BaseMainnet: [] };
-    // Empty array represents Opt::None
     case CHAIN_WORLDCHAIN:
       return { WorldChain: [] };
-    // Empty array represents Opt::None
     default:
       throw new Error(`Unsupported chain ID: ${chain2}`);
   }
@@ -6905,10 +6903,13 @@ async function fetchTransactionReceipt(chain2, transactionId) {
   const rpcServices = getRpcServices(chain2);
   const rpcConfig = createDefaultRpcConfig(1000000n);
   try {
+    const cyclesToForward = 30000000000n;
     const result = await call(EVM_RPC_CANISTER_ID, "eth_getTransactionReceipt", {
       args: [rpcServices, rpcConfig, transactionId],
       paramIdlTypes: [RpcServices, RpcConfig, idl_exports.Text],
-      returnIdlType: MultiGetTransactionReceiptResult
+      returnIdlType: MultiGetTransactionReceiptResult,
+      cycles: cyclesToForward
+      // Forward cycles to EVM RPC canister
     });
     let receiptResult = null;
     if ("Consistent" in result) {
@@ -6926,30 +6927,36 @@ async function fetchTransactionReceipt(chain2, transactionId) {
         return null;
       }
       const receipt = receiptOpt[0];
+      let logs = [];
+      if (receipt.logs && Array.isArray(receipt.logs)) {
+        logs = receipt.logs.map((log2) => ({
+          transactionHash: log2.transactionHash && log2.transactionHash.length > 0 ? log2.transactionHash[0] : void 0,
+          blockNumber: log2.blockNumber && log2.blockNumber.length > 0 ? log2.blockNumber[0] : void 0,
+          data: log2.data,
+          blockHash: log2.blockHash && log2.blockHash.length > 0 ? log2.blockHash[0] : void 0,
+          transactionIndex: log2.transactionIndex && log2.transactionIndex.length > 0 ? log2.transactionIndex[0] : void 0,
+          topics: log2.topics || [],
+          address: log2.address,
+          logIndex: log2.logIndex && log2.logIndex.length > 0 ? log2.logIndex[0] : void 0,
+          removed: log2.removed || false
+        }));
+      } else if (receipt.logs) {
+        console.warn(`Receipt logs is not an array: ${typeof receipt.logs}`);
+      }
       return {
-        to: receipt.to.length > 0 ? receipt.to[0] : void 0,
-        status: receipt.status.length > 0 ? receipt.status[0] : void 0,
-        root: receipt.root.length > 0 ? receipt.root[0] : void 0,
+        to: receipt.to && receipt.to.length > 0 ? receipt.to[0] : void 0,
+        status: receipt.status && receipt.status.length > 0 ? receipt.status[0] : void 0,
+        root: receipt.root && receipt.root.length > 0 ? receipt.root[0] : void 0,
         transactionHash: receipt.transactionHash,
         blockNumber: receipt.blockNumber,
         from: receipt.from,
-        logs: receipt.logs.map((log2) => ({
-          transactionHash: log2.transactionHash.length > 0 ? log2.transactionHash[0] : void 0,
-          blockNumber: log2.blockNumber.length > 0 ? log2.blockNumber[0] : void 0,
-          data: log2.data,
-          blockHash: log2.blockHash.length > 0 ? log2.blockHash[0] : void 0,
-          transactionIndex: log2.transactionIndex.length > 0 ? log2.transactionIndex[0] : void 0,
-          topics: log2.topics,
-          address: log2.address,
-          logIndex: log2.logIndex.length > 0 ? log2.logIndex[0] : void 0,
-          removed: log2.removed
-        })),
+        logs,
         blockHash: receipt.blockHash,
         type: receipt.type,
         transactionIndex: receipt.transactionIndex,
         effectiveGasPrice: receipt.effectiveGasPrice,
         logsBloom: receipt.logsBloom,
-        contractAddress: receipt.contractAddress.length > 0 ? receipt.contractAddress[0] : void 0,
+        contractAddress: receipt.contractAddress && receipt.contractAddress.length > 0 ? receipt.contractAddress[0] : void 0,
         gasUsed: receipt.gasUsed,
         cumulativeGasUsed: receipt.cumulativeGasUsed
       };
@@ -11982,11 +11989,21 @@ var accountManagement_default = [
       {
         name: "wallet",
         type: "address",
-        indexed: true
+        indexed: false
       },
       {
         name: "authCode",
         type: "string",
+        indexed: false
+      },
+      {
+        name: "tweetID",
+        type: "string",
+        indexed: false
+      },
+      {
+        name: "twitterID",
+        type: "uint256",
         indexed: false
       }
     ]
@@ -12164,12 +12181,20 @@ var accountManagement_default = [
 
 // src/gm-account-manager-canister/evmContracts/eventDecoder.ts
 var eventDecoders = events(accountManagement_default);
+function computeEventSignature(eventAbi) {
+  const params = eventAbi.inputs.map((input) => input.type).join(",");
+  const signature = `${eventAbi.name}(${params})`;
+  const hash = keccak_256(new TextEncoder().encode(signature));
+  return "0x" + Array.from(hash).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 function buildSignatureMap() {
   const map2 = /* @__PURE__ */ new Map();
-  const decoders = eventDecoders;
-  for (const [name, decoder] of Object.entries(decoders)) {
-    if (decoder?.signature) {
-      map2.set(decoder.signature.toLowerCase(), name);
+  const abi = accountManagement_default;
+  for (const item of abi) {
+    if (item.type === "event") {
+      const signature = computeEventSignature(item);
+      const sigLower = signature.toLowerCase();
+      map2.set(sigLower, item.name);
     }
   }
   return map2;
@@ -12184,26 +12209,49 @@ function decodeEvent(eventName, topics, data) {
     const decoded = decoder.decode(topics, data);
     return { name: eventName, args: decoded };
   } catch (error) {
-    console.error(`Error decoding event ${eventName}: ${error.message}`);
     return null;
   }
 }
 function getEventSignature(eventName) {
-  const decoder = eventDecoders[eventName];
-  return decoder?.signature || null;
+  const abi = accountManagement_default;
+  const eventAbi = abi.find((item) => item.type === "event" && item.name === eventName);
+  if (!eventAbi) {
+    return null;
+  }
+  return computeEventSignature(eventAbi);
 }
 function getEventName(signatureHash) {
-  return signatureToName.get(signatureHash.toLowerCase()) || null;
+  const sigLower = signatureHash.toLowerCase();
+  const name = signatureToName.get(sigLower);
+  if (!name) {
+    console.log(`getEventName: Looking for signature ${sigLower}`);
+    console.log(`getEventName: Map has ${signatureToName.size} entries`);
+    for (const [sig, eventName] of signatureToName.entries()) {
+      if (sig === sigLower) {
+        return eventName;
+      }
+    }
+  }
+  return name || null;
 }
 function extractEvents(logs, allowedContracts) {
   const events2 = [];
-  const normalizedContracts = allowedContracts.map((a) => a.toLowerCase());
+  if (!Array.isArray(logs) || !Array.isArray(allowedContracts)) {
+    return events2;
+  }
+  const normalizedContracts = allowedContracts.filter((a) => a && typeof a === "string" && a.trim() !== "").map((a) => a.toLowerCase());
   for (const log2 of logs) {
+    if (!log2 || typeof log2 !== "object") {
+      continue;
+    }
+    if (!log2.address || typeof log2.address !== "string") {
+      continue;
+    }
     const contractAddress = log2.address.toLowerCase();
     if (!normalizedContracts.includes(contractAddress)) {
       continue;
     }
-    if (log2.topics.length === 0) {
+    if (!log2.topics || !Array.isArray(log2.topics) || log2.topics.length === 0) {
       continue;
     }
     const eventName = getEventName(log2.topics[0]);
@@ -12212,7 +12260,10 @@ function extractEvents(logs, allowedContracts) {
     }
     const data = log2.data || "0x";
     const decoded = decodeEvent(eventName, log2.topics, data);
-    const args = decoded?.args || {};
+    if (!decoded) {
+      continue;
+    }
+    const args = decoded.args || {};
     args.topic0 = log2.topics[0];
     if (log2.topics.length > 1) args.topic1 = log2.topics[1];
     if (log2.topics.length > 2) args.topic2 = log2.topics[2];
@@ -12445,44 +12496,82 @@ function markUserAsVerified(userId) {
 }
 
 // src/gm-account-manager-canister/utils/httpClient.ts
+var MANAGEMENT_CANISTER = Principal.fromText("aaaaa-aa");
 async function httpRequest(url, options) {
-  if (typeof ic === "undefined" || !ic.httpRequest) {
-    throw new Error(
-      "HTTP outcalls not available. This function needs to be implemented using ICP's native HTTP outcalls API. In production, use ic.httpRequest() from the ICP runtime environment."
-    );
-  }
   try {
-    const urlObj = new URL(url);
+    if (!url || typeof url !== "string" || !url.startsWith("http://") && !url.startsWith("https://")) {
+      throw new Error(`Invalid URL: ${url}`);
+    }
     const headers = [];
     if (options.headers) {
       for (const [key, value] of Object.entries(options.headers)) {
         headers.push([key.toLowerCase(), value]);
       }
     }
-    const httpRequest2 = {
+    const maxResponseBytes = options.maxResponseBytes || 2000000n;
+    const maxResponseBytesOpt = maxResponseBytes ? [maxResponseBytes] : [];
+    const transformOpt = options.transformMethodName && typeof ic !== "undefined" && ic.id ? [{
+      function: [ic.id(), options.transformMethodName],
+      context: Array.from(Uint8Array.from([]))
+    }] : [];
+    let methodVariant;
+    switch (options.method) {
+      case "GET":
+        methodVariant = { get: null };
+        break;
+      case "POST":
+        methodVariant = { post: { body: Array.from(new TextEncoder().encode(options.body || "")) } };
+        break;
+      case "PUT":
+        methodVariant = { put: { body: Array.from(new TextEncoder().encode(options.body || "")) } };
+        break;
+      case "DELETE":
+        methodVariant = { delete: null };
+        break;
+      default:
+        throw new Error(`Unsupported HTTP method: ${options.method}`);
+    }
+    const httpRequestParams = {
       url,
-      method: {
-        GET: null,
-        POST: options.body ? { body: new TextEncoder().encode(options.body) } : null,
-        PUT: options.body ? { body: new TextEncoder().encode(options.body) } : null,
-        DELETE: null
-      }[options.method],
+      method: methodVariant,
       headers,
-      body: options.body ? new TextEncoder().encode(options.body) : void 0,
-      max_response_bytes: options.maxResponseBytes || 2000000n,
-      // 2MB default
-      transform: options.transformMethodName ? {
-        function: [ic.id(), options.transformMethodName],
-        context: Uint8Array.from([])
-      } : void 0
+      max_response_bytes: maxResponseBytesOpt,
+      transform: transformOpt
     };
-    const response = await ic.httpRequest(httpRequest2);
-    const status = Number(response.status.code);
-    const body = new TextDecoder().decode(response.body);
-    if (status >= 200 && status < 300) {
-      return { body, status };
+    const HttpRequest = idl_exports.Record({
+      url: idl_exports.Text,
+      method: idl_exports.Variant({
+        get: idl_exports.Null,
+        post: idl_exports.Record({ body: idl_exports.Vec(idl_exports.Nat8) }),
+        put: idl_exports.Record({ body: idl_exports.Vec(idl_exports.Nat8) }),
+        delete: idl_exports.Null
+      }),
+      headers: idl_exports.Vec(idl_exports.Tuple(idl_exports.Text, idl_exports.Text)),
+      max_response_bytes: idl_exports.Vec(idl_exports.Nat64),
+      // Opt(nat64) is encoded as Vec(nat64)
+      transform: idl_exports.Vec(idl_exports.Record({
+        // Opt(transform) is encoded as Vec(transform)
+        function: idl_exports.Tuple(idl_exports.Principal, idl_exports.Text),
+        context: idl_exports.Vec(idl_exports.Nat8)
+      }))
+    });
+    const HttpResponse = idl_exports.Record({
+      status: idl_exports.Record({ code: idl_exports.Nat16 }),
+      headers: idl_exports.Vec(idl_exports.Tuple(idl_exports.Text, idl_exports.Text)),
+      body: idl_exports.Vec(idl_exports.Nat8)
+    });
+    const response = await call(MANAGEMENT_CANISTER, "http_request", {
+      args: [httpRequestParams],
+      paramIdlTypes: [HttpRequest],
+      returnIdlType: HttpResponse
+    });
+    const statusCode = Number(response.status.code);
+    const bodyBytes = new Uint8Array(response.body);
+    const body = new TextDecoder().decode(bodyBytes);
+    if (statusCode >= 200 && statusCode < 300) {
+      return { body, status: statusCode };
     } else {
-      throw new Error(`HTTP ${status}: ${body}`);
+      throw new Error(`HTTP ${statusCode}: ${body}`);
     }
   } catch (error) {
     console.error(`HTTP request error for ${url}:`, error);
@@ -12532,7 +12621,10 @@ function validateAuthCode(authCode, walletAddress) {
   const walletStartingLetterNumber = parseInt(walletStartingLetterNumberStr);
   const actualWalletLetters = walletAddress.substring(walletStartingLetterNumber, walletStartingLetterNumber + 10);
   if (wallet10Letters.toLowerCase() !== actualWalletLetters.toLowerCase()) {
-    return { isValid: false, error: "Wallet letters in auth code do not match the wallet address" };
+    return {
+      isValid: false,
+      error: `Wallet letters mismatch. Auth code: ${wallet10Letters.toLowerCase()}, Wallet (pos ${walletStartingLetterNumber}): ${actualWalletLetters.toLowerCase()}, Full wallet: ${walletAddress}`
+    };
   }
   return { isValid: true };
 }
@@ -12584,7 +12676,7 @@ function encodeCreateOrUpdateUser(userId, wallet, twitterId, farcasterId, wallet
 }
 
 // src/gm-account-manager-canister/evmContracts/thresholdSigning.ts
-var MANAGEMENT_CANISTER = Principal.fromText("aaaaa-aa");
+var MANAGEMENT_CANISTER2 = Principal.fromText("aaaaa-aa");
 var KEY_NAME = "key_1";
 var keyId = {
   curve: { secp256k1: null },
@@ -12606,7 +12698,7 @@ async function getPublicKey() {
       console.warn("Could not get canister ID, using None for canister_id");
       canisterIdOpt = [];
     }
-    const result = await call(MANAGEMENT_CANISTER, "ecdsa_public_key", {
+    const result = await call(MANAGEMENT_CANISTER2, "ecdsa_public_key", {
       args: [{
         canister_id: canisterIdOpt,
         derivation_path: derivationPathBytes,
@@ -12642,7 +12734,7 @@ async function signWithThresholdEcdsa(data) {
   try {
     const messageHash = keccak_256(data);
     const derivationPathBytes = derivationPath.map((p) => Array.from(p));
-    const result = await call(MANAGEMENT_CANISTER, "sign_with_ecdsa", {
+    const result = await call(MANAGEMENT_CANISTER2, "sign_with_ecdsa", {
       args: [{
         message_hash: Array.from(messageHash),
         derivation_path: derivationPathBytes,
@@ -12829,11 +12921,9 @@ function initEventSignatures() {
       eventSignaturesCache[eventName] = signature;
     }
   }
-  console.log(`Initialized ${Object.keys(eventSignaturesCache).length} event signatures from ABI`);
 }
 function ensureInitialized() {
   if (!configInitialized) {
-    contractsByChainId.clear();
     initEventSignatures();
     configInitialized = true;
   }
@@ -12860,11 +12950,14 @@ function getContracts(chain2) {
 function getContractAddresses(chain2) {
   const contracts = getContracts(chain2);
   if (!contracts) return [];
-  const addresses = [contracts.accountManager];
-  if (contracts.GMCoin) {
+  const addresses = [];
+  if (contracts.accountManager && typeof contracts.accountManager === "string" && contracts.accountManager.trim() !== "") {
+    addresses.push(contracts.accountManager);
+  }
+  if (contracts.GMCoin && typeof contracts.GMCoin === "string" && contracts.GMCoin.trim() !== "") {
     addresses.push(contracts.GMCoin);
   }
-  return addresses.filter((addr2) => addr2 !== "");
+  return addresses.filter((addr2) => addr2 && typeof addr2 === "string" && addr2.trim() !== "");
 }
 
 // src/gm-account-manager-canister/storage/atomicCounter.ts
@@ -13050,26 +13143,41 @@ async function processUserEvent(event, chain2) {
 }
 
 // src/gm-account-manager-canister/verification/verifyTwitter.ts
+function safeStringify(obj) {
+  return JSON.stringify(obj, (key, value) => {
+    if (typeof value === "bigint") {
+      return value.toString();
+    }
+    return value;
+  });
+}
 async function verifyTwitter(event, chain2, transactionFrom) {
   console.log(`Processing VerifyTwitterByAuthCodeRequested event`);
-  console.log(`Event args: ${JSON.stringify(event.args)}`);
-  const wallet = transactionFrom.toLowerCase();
-  const authCode = event.args.authCode;
-  const tweetID = event.args.tweetID;
-  const twitterUserID = event.args.userID;
+  console.log(`Event args: ${safeStringify(event.args)}`);
+  console.log(`Transaction from: ${transactionFrom}`);
+  console.log(`Event args keys: ${Object.keys(event.args || {}).join(", ")}`);
+  const authCode = event.args.authCode || event.args.auth_code || event.args[1];
+  const tweetID = event.args.tweetID || event.args.tweet_id || event.args[2];
+  const twitterUserID = event.args.twitterID || event.args.twitter_id || event.args.userID || event.args.user_id || event.args[3];
+  const wallet = (event.args.wallet || transactionFrom || "").toLowerCase();
+  console.log(`Extracted values - wallet: ${wallet}, authCode: ${authCode} (type: ${typeof authCode}), tweetID: ${tweetID} (type: ${typeof tweetID}), twitterUserID: ${twitterUserID} (type: ${typeof twitterUserID})`);
+  if (!wallet || !wallet.startsWith("0x")) {
+    throw new Error(`No valid wallet found in event. Event must contain wallet address. Got: ${wallet}`);
+  }
   if (!authCode || typeof authCode !== "string") {
-    throw new Error("No auth code found in event. Event must contain authCode string.");
+    throw new Error(`No auth code found in event. Event must contain authCode string. Got: ${typeof authCode}, value: ${authCode}`);
   }
   if (!tweetID || typeof tweetID !== "string") {
-    throw new Error("No tweet ID found in event. Event must contain tweetID string.");
+    throw new Error(`No tweet ID found in event. Event must contain tweetID string. Got: ${typeof tweetID}, value: ${tweetID}`);
   }
-  if (!twitterUserID || typeof twitterUserID !== "string") {
-    throw new Error("No user ID found in event. Event must contain userID string.");
+  if (!twitterUserID || typeof twitterUserID !== "string" && typeof twitterUserID !== "bigint" && typeof twitterUserID !== "number") {
+    throw new Error(`No user ID found in event. Event must contain twitterID. Got: ${typeof twitterUserID}, value: ${twitterUserID}`);
   }
-  console.log(`Verifying Twitter auth code: ${authCode}, tweetID: ${tweetID}, twitterUserID: ${twitterUserID}`);
-  await verifyTwitterAuthCode(authCode, tweetID, twitterUserID, wallet);
+  const twitterUserIDStr = typeof twitterUserID === "string" ? twitterUserID : String(twitterUserID);
+  console.log(`Verifying Twitter auth code: ${authCode}, tweetID: ${tweetID}, twitterUserID: ${twitterUserIDStr}, wallet: ${wallet}`);
+  await verifyTwitterAuthCode(authCode, tweetID, twitterUserIDStr, wallet);
   console.log(`Successfully verified Twitter auth code`);
-  const twitterId = BigInt(twitterUserID);
+  const twitterId = BigInt(twitterUserIDStr);
   const contractAddress = getContracts(chain2)?.accountManager;
   if (!contractAddress) {
     throw new Error(`No contract address configured for chain: ${chain2}`);
@@ -13167,7 +13275,15 @@ async function verifyFarcasterAuthBigInt(authToken) {
 // src/gm-account-manager-canister/verification/verifyFarcaster.ts
 async function verifyFarcaster(event, chain2, transactionFrom) {
   console.log(`Processing VerifyFarcasterRequested event`);
-  console.log(`Event args: ${JSON.stringify(event.args)}`);
+  const safeStringify2 = (obj) => {
+    return JSON.stringify(obj, (key, value) => {
+      if (typeof value === "bigint") {
+        return value.toString();
+      }
+      return value;
+    });
+  };
+  console.log(`Event args: ${safeStringify2(event.args)}`);
   const wallet = transactionFrom.toLowerCase();
   const authToken = event.args.authToken || event.args.authCode || event.args.data;
   if (!authToken || authToken === "0x" || typeof authToken === "string" && authToken.startsWith("0x") && authToken.length < 10) {
@@ -13386,20 +13502,38 @@ async function processEvent(chain2, transactionId) {
       return;
     }
     const toAddress = receipt.to?.toLowerCase();
-    if (!toAddress) {
-      console.error(`Transaction ${transactionId} is not a contract call (no 'to' address)`);
+    if (!Array.isArray(allowedContracts)) {
+      console.error(`allowedContracts is not an array: ${typeof allowedContracts}`);
       return;
     }
-    const isOurContract = allowedContracts.some(
-      (addr2) => addr2.toLowerCase() === toAddress
-    );
-    if (!isOurContract) {
-      console.log(`Transaction ${transactionId} is not to one of our contracts. Ignoring.`);
-      return;
+    console.log(`Transaction ${transactionId} - to address: ${toAddress || "null"}`);
+    try {
+      const allowedContractsLower = allowedContracts.map((a) => a && typeof a === "string" ? a.toLowerCase() : "");
+      console.log(`Transaction ${transactionId} - allowed contracts: ${JSON.stringify(allowedContractsLower)}`);
+    } catch (e) {
+      console.log(`Transaction ${transactionId} - allowed contracts: ${String(allowedContracts)}`);
     }
-    console.log(`Transaction ${transactionId} verified - from our contract ${toAddress}`);
-    const events2 = extractEvents(receipt.logs, allowedContracts);
-    console.log(`Found ${events2.length} events from our contracts`);
+    const logsArray = Array.isArray(receipt.logs) ? receipt.logs : receipt.logs ? [receipt.logs] : [];
+    const validAllowedContracts = allowedContracts.filter((addr2) => addr2 && typeof addr2 === "string" && addr2.trim() !== "");
+    const events2 = extractEvents(logsArray, validAllowedContracts);
+    if (events2.length === 0) {
+      if (!toAddress) {
+        console.error(`Transaction ${transactionId} is not a contract call (no 'to' address) and no events found`);
+        return;
+      }
+      const isOurContract = allowedContracts.some(
+        (addr2) => addr2 && typeof addr2 === "string" && addr2.toLowerCase() === toAddress
+      );
+      if (!isOurContract) {
+        console.log(`Transaction ${transactionId} is not to one of our contracts and no events found. Ignoring.`);
+        console.log(`  Transaction 'to' address: ${toAddress}`);
+        console.log(`  Configured contract addresses: ${allowedContracts.map((a) => a.toLowerCase()).join(", ")}`);
+        return;
+      }
+      console.log(`Transaction ${transactionId} verified - directly to our contract ${toAddress}`);
+    } else {
+      console.log(`Transaction ${transactionId} verified - found events from our contracts (may be proxied through account abstraction)`);
+    }
     if (events2.length === 0) {
       console.log(`No relevant events found in transaction ${transactionId}`);
       markTransactionProcessed(chain2, transactionId, Number(receipt.blockNumber));
@@ -13493,6 +13627,7 @@ async function getLogsForBlocks(chain2, fromBlock, toBlock, contractAddresses) {
       topics: []
       // Empty topics to get all events
     };
+    const cyclesToForward = 30000000000n;
     const result = await call(EVM_RPC_CANISTER_ID, "eth_getLogs", {
       args: [rpcServices, rpcConfig, filter],
       paramIdlTypes: [
@@ -13511,7 +13646,9 @@ async function getLogsForBlocks(chain2, fromBlock, toBlock, contractAddresses) {
         address: idl_exports.Text,
         topics: idl_exports.Vec(idl_exports.Text),
         data: idl_exports.Text
-      }))
+      })),
+      cycles: cyclesToForward
+      // Forward cycles to EVM RPC canister
     });
     const txHashes = /* @__PURE__ */ new Set();
     for (const log2 of result) {

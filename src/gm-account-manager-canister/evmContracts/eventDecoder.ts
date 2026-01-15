@@ -4,6 +4,7 @@
  */
 
 import { events } from 'micro-eth-signer/advanced/abi.js';
+import { keccak_256 } from '@noble/hashes/sha3.js';
 import AccountManagerABI from './abi/accountManagement.json';
 import { ParsedEvent, LogEntry } from '../utils/types';
 
@@ -13,16 +14,30 @@ import { ParsedEvent, LogEntry } from '../utils/types';
 const eventDecoders = events(AccountManagerABI as any);
 
 /**
+ * Compute event signature hash from ABI
+ */
+function computeEventSignature(eventAbi: any): string {
+    const params = eventAbi.inputs.map((input: any) => input.type).join(',');
+    const signature = `${eventAbi.name}(${params})`;
+    const hash = keccak_256(new TextEncoder().encode(signature));
+    return '0x' + Array.from(hash).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
  * Build signature → event name map from ABI
  */
 function buildSignatureMap(): Map<string, string> {
     const map = new Map<string, string>();
-    const decoders = eventDecoders as Record<string, { signature?: string }>;
-    for (const [name, decoder] of Object.entries(decoders)) {
-        if (decoder?.signature) {
-            map.set(decoder.signature.toLowerCase(), name);
+    const abi = AccountManagerABI as any[];
+    
+    for (const item of abi) {
+        if (item.type === 'event') {
+            const signature = computeEventSignature(item);
+            const sigLower = signature.toLowerCase();
+            map.set(sigLower, item.name);
         }
     }
+    
     return map;
 }
 
@@ -52,7 +67,6 @@ export function decodeEvent(
         const decoded = decoder.decode(topics, data);
         return { name: eventName, args: decoded };
     } catch (error: any) {
-        console.error(`Error decoding event ${eventName}: ${error.message}`);
         return null;
     }
 }
@@ -61,15 +75,31 @@ export function decodeEvent(
  * Get event signature hash for a given event name
  */
 export function getEventSignature(eventName: string): string | null {
-    const decoder = (eventDecoders as any)[eventName];
-    return decoder?.signature || null;
+    const abi = AccountManagerABI as any[];
+    const eventAbi = abi.find(item => item.type === 'event' && item.name === eventName);
+    if (!eventAbi) {
+        return null;
+    }
+    return computeEventSignature(eventAbi);
 }
 
 /**
  * Get event name from signature hash
  */
 export function getEventName(signatureHash: string): string | null {
-    return signatureToName.get(signatureHash.toLowerCase()) || null;
+    const sigLower = signatureHash.toLowerCase();
+    const name = signatureToName.get(sigLower);
+    if (!name) {
+        // Debug: log what we're looking for and what's in the map
+        console.log(`getEventName: Looking for signature ${sigLower}`);
+        console.log(`getEventName: Map has ${signatureToName.size} entries`);
+        for (const [sig, eventName] of signatureToName.entries()) {
+            if (sig === sigLower) {
+                return eventName;
+            }
+        }
+    }
+    return name || null;
 }
 
 /**
@@ -81,39 +111,51 @@ export function extractEvents(
     allowedContracts: string[]
 ): ParsedEvent[] {
     const events: ParsedEvent[] = [];
-    const normalizedContracts = allowedContracts.map(a => a.toLowerCase());
+    
+    if (!Array.isArray(logs) || !Array.isArray(allowedContracts)) {
+        return events;
+    }
+    
+    const normalizedContracts = allowedContracts
+        .filter(a => a && typeof a === 'string' && a.trim() !== '')
+        .map(a => a.toLowerCase());
 
     for (const log of logs) {
-        // Filter by contract address
+        if (!log || typeof log !== 'object') {
+            continue;
+        }
+        
+        if (!log.address || typeof log.address !== 'string') {
+            continue;
+        }
+        
         const contractAddress = log.address.toLowerCase();
         if (!normalizedContracts.includes(contractAddress)) {
             continue;
         }
 
-        // Need at least one topic (event signature)
-        if (log.topics.length === 0) {
+        if (!log.topics || !Array.isArray(log.topics) || log.topics.length === 0) {
             continue;
         }
 
-        // Look up event name by signature
         const eventName = getEventName(log.topics[0]);
         if (!eventName) {
             continue;
         }
 
-        // Decode event using ABI
         const data = log.data || '0x';
         const decoded = decodeEvent(eventName, log.topics, data);
+        if (!decoded) {
+            continue;
+        }
 
-        // Build args with decoded values + raw topics for compatibility
-        const args: Record<string, any> = decoded?.args || {};
+        const args: Record<string, any> = decoded.args || {};
         args.topic0 = log.topics[0];
         if (log.topics.length > 1) args.topic1 = log.topics[1];
         if (log.topics.length > 2) args.topic2 = log.topics[2];
         if (log.topics.length > 3) args.topic3 = log.topics[3];
         args.data = data;
 
-        // Alias authToken as authCode for compatibility
         if (args.authToken && !args.authCode) {
             args.authCode = args.authToken;
         }

@@ -34,6 +34,12 @@ async function getLogsForBlocks(
             topics: [], // Empty topics to get all events
         };
 
+        // The EVM RPC canister requires cycles to be forwarded with the call for HTTP outcalls
+        // Azle's call() function supports a 'cycles' parameter to forward cycles
+        // 30 billion cycles should be sufficient for eth_getLogs calls (unused cycles are refunded)
+        // eth_getLogs can be expensive for large block ranges, so we use a generous amount
+        const cyclesToForward = 30_000_000_000n; // 30 billion cycles
+        
         const result = await call(EVM_RPC_CANISTER_ID, 'eth_getLogs', {
             args: [rpcServices, rpcConfig, filter],
             paramIdlTypes: [
@@ -53,6 +59,7 @@ async function getLogsForBlocks(
                 topics: IDL.Vec(IDL.Text),
                 data: IDL.Text,
             })),
+            cycles: cyclesToForward, // Forward cycles to EVM RPC canister
         });
 
         // Extract unique transaction hashes

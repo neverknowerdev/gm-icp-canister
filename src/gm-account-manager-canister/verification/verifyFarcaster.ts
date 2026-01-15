@@ -28,7 +28,15 @@ export async function verifyFarcaster(
     transactionFrom: string
 ): Promise<void> {
     console.log(`Processing VerifyFarcasterRequested event`);
-    console.log(`Event args: ${JSON.stringify(event.args)}`);
+    const safeStringify = (obj: any): string => {
+        return JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'bigint') {
+                return value.toString();
+            }
+            return value;
+        });
+    };
+    console.log(`Event args: ${safeStringify(event.args)}`);
 
     // Extract auth token and wallet from event
     const wallet = transactionFrom.toLowerCase();

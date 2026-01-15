@@ -98,27 +98,51 @@ export async function processEvent(
             return;
         }
 
-        // 4. Verify contract address (check if transaction is to one of our contracts)
+        // 4. Check if transaction is directly to our contract OR if events from our contracts are in the logs
+        // (Account abstraction wallets proxy transactions, so the 'to' address won't match)
         const toAddress = receipt.to?.toLowerCase();
-        if (!toAddress) {
-            console.error(`Transaction ${transactionId} is not a contract call (no 'to' address)`);
+        
+        // Ensure allowedContracts is an array
+        if (!Array.isArray(allowedContracts)) {
+            console.error(`allowedContracts is not an array: ${typeof allowedContracts}`);
             return;
         }
 
-        const isOurContract = allowedContracts.some(
-            addr => addr.toLowerCase() === toAddress
-        );
-
-        if (!isOurContract) {
-            console.log(`Transaction ${transactionId} is not to one of our contracts. Ignoring.`);
-            return;
+        // Log for debugging
+        console.log(`Transaction ${transactionId} - to address: ${toAddress || 'null'}`);
+        try {
+            const allowedContractsLower = allowedContracts.map((a: string) => a && typeof a === 'string' ? a.toLowerCase() : '');
+            console.log(`Transaction ${transactionId} - allowed contracts: ${JSON.stringify(allowedContractsLower)}`);
+        } catch (e) {
+            console.log(`Transaction ${transactionId} - allowed contracts: ${String(allowedContracts)}`);
         }
 
-        console.log(`Transaction ${transactionId} verified - from our contract ${toAddress}`);
+        const logsArray = Array.isArray(receipt.logs) ? receipt.logs : (receipt.logs ? [receipt.logs] : []);
+        const validAllowedContracts = allowedContracts.filter(addr => addr && typeof addr === 'string' && addr.trim() !== '');
+        const events = extractEvents(logsArray, validAllowedContracts);
 
-        // 5. Extract events from logs
-        const events = extractEvents(receipt.logs, allowedContracts);
-        console.log(`Found ${events.length} events from our contracts`);
+        // If no events found, check if transaction is directly to our contract
+        if (events.length === 0) {
+            if (!toAddress) {
+                console.error(`Transaction ${transactionId} is not a contract call (no 'to' address) and no events found`);
+                return;
+            }
+
+            const isOurContract = allowedContracts.some(
+                addr => addr && typeof addr === 'string' && addr.toLowerCase() === toAddress
+            );
+
+            if (!isOurContract) {
+                console.log(`Transaction ${transactionId} is not to one of our contracts and no events found. Ignoring.`);
+                console.log(`  Transaction 'to' address: ${toAddress}`);
+                console.log(`  Configured contract addresses: ${allowedContracts.map(a => a.toLowerCase()).join(', ')}`);
+                return;
+            }
+
+            console.log(`Transaction ${transactionId} verified - directly to our contract ${toAddress}`);
+        } else {
+            console.log(`Transaction ${transactionId} verified - found events from our contracts (may be proxied through account abstraction)`);
+        }
 
         if (events.length === 0) {
             console.log(`No relevant events found in transaction ${transactionId}`);

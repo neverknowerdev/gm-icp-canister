@@ -32,13 +32,18 @@ export const RpcConfig = IDL.Record({
 /**
  * Maps chain ID to RPC services variant
  * Note: Opt<Vec<L2MainnetService>> is represented as [] (empty array = None) or [services] (array with elements = Some)
+ * For now, we use empty array (None) which tells the RPC canister to use default providers
+ * The RPC canister should handle cycle management internally
  */
 export function getRpcServices(chain: Chain): any {
     switch (chain) {
         case CHAIN_BASE_MAINNET:
-            return { BaseMainnet: [] }; // Empty array represents Opt::None
+            // Empty array = Opt::None, which means use default providers
+            // The EVM RPC canister will select providers automatically
+            return { BaseMainnet: [] };
         case CHAIN_WORLDCHAIN:
-            return { WorldChain: [] }; // Empty array represents Opt::None
+            // Empty array = Opt::None, which means use default providers
+            return { WorldChain: [] };
         default:
             throw new Error(`Unsupported chain ID: ${chain}`);
     }
@@ -173,10 +178,17 @@ export async function fetchTransactionReceipt(
     const rpcConfig = createDefaultRpcConfig(1_000_000n);
 
     try {
+        // The EVM RPC canister requires cycles to be forwarded with the call for HTTP outcalls
+        // Azle's call() function supports a 'cycles' parameter to forward cycles
+        // 30 billion cycles should be sufficient for most RPC calls (unused cycles are refunded)
+        // Based on documentation: https://internetcomputer.org/docs/building-apps/chain-fusion/ethereum/evm-rpc/costs
+        const cyclesToForward = 30_000_000_000n; // 30 billion cycles
+        
         const result = await call(EVM_RPC_CANISTER_ID, 'eth_getTransactionReceipt', {
             args: [rpcServices, rpcConfig, transactionId],
             paramIdlTypes: [RpcServices, RpcConfig, IDL.Text],
             returnIdlType: MultiGetTransactionReceiptResult,
+            cycles: cyclesToForward, // Forward cycles to EVM RPC canister
         });
 
         let receiptResult: any = null;
@@ -198,30 +210,40 @@ export async function fetchTransactionReceipt(
             }
 
             const receipt = receiptOpt[0];
+            
+            // Safely handle logs - ensure it's an array
+            let logs: any[] = [];
+            if (receipt.logs && Array.isArray(receipt.logs)) {
+                logs = receipt.logs.map((log: any) => ({
+                    transactionHash: log.transactionHash && log.transactionHash.length > 0 ? log.transactionHash[0] : undefined,
+                    blockNumber: log.blockNumber && log.blockNumber.length > 0 ? log.blockNumber[0] : undefined,
+                    data: log.data,
+                    blockHash: log.blockHash && log.blockHash.length > 0 ? log.blockHash[0] : undefined,
+                    transactionIndex: log.transactionIndex && log.transactionIndex.length > 0 ? log.transactionIndex[0] : undefined,
+                    topics: log.topics || [],
+                    address: log.address,
+                    logIndex: log.logIndex && log.logIndex.length > 0 ? log.logIndex[0] : undefined,
+                    removed: log.removed || false,
+                }));
+            } else if (receipt.logs) {
+                // If logs exists but is not an array, log a warning
+                console.warn(`Receipt logs is not an array: ${typeof receipt.logs}`);
+            }
+            
             return {
-                to: receipt.to.length > 0 ? receipt.to[0] : undefined,
-                status: receipt.status.length > 0 ? receipt.status[0] : undefined,
-                root: receipt.root.length > 0 ? receipt.root[0] : undefined,
+                to: receipt.to && receipt.to.length > 0 ? receipt.to[0] : undefined,
+                status: receipt.status && receipt.status.length > 0 ? receipt.status[0] : undefined,
+                root: receipt.root && receipt.root.length > 0 ? receipt.root[0] : undefined,
                 transactionHash: receipt.transactionHash,
                 blockNumber: receipt.blockNumber,
                 from: receipt.from,
-                logs: receipt.logs.map((log: any) => ({
-                    transactionHash: log.transactionHash.length > 0 ? log.transactionHash[0] : undefined,
-                    blockNumber: log.blockNumber.length > 0 ? log.blockNumber[0] : undefined,
-                    data: log.data,
-                    blockHash: log.blockHash.length > 0 ? log.blockHash[0] : undefined,
-                    transactionIndex: log.transactionIndex.length > 0 ? log.transactionIndex[0] : undefined,
-                    topics: log.topics,
-                    address: log.address,
-                    logIndex: log.logIndex.length > 0 ? log.logIndex[0] : undefined,
-                    removed: log.removed,
-                })),
+                logs: logs,
                 blockHash: receipt.blockHash,
                 type: receipt.type,
                 transactionIndex: receipt.transactionIndex,
                 effectiveGasPrice: receipt.effectiveGasPrice,
                 logsBloom: receipt.logsBloom,
-                contractAddress: receipt.contractAddress.length > 0 ? receipt.contractAddress[0] : undefined,
+                contractAddress: receipt.contractAddress && receipt.contractAddress.length > 0 ? receipt.contractAddress[0] : undefined,
                 gasUsed: receipt.gasUsed,
                 cumulativeGasUsed: receipt.cumulativeGasUsed,
             };

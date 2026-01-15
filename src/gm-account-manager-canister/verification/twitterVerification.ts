@@ -80,10 +80,16 @@ export function validateAuthCode(authCode: string, walletAddress: string): { isV
     }
 
     const walletStartingLetterNumber = parseInt(walletStartingLetterNumberStr);
+    // The frontend uses walletAddress.substring(2, 12) which includes the "0x" prefix
+    // So position 2 means position 2 of the full address including "0x"
+    // Example: "0x864c0a504d..." -> substring(2, 12) = "864c0a504d"
     const actualWalletLetters = walletAddress.substring(walletStartingLetterNumber, walletStartingLetterNumber + 10);
 
     if (wallet10Letters.toLowerCase() !== actualWalletLetters.toLowerCase()) {
-        return { isValid: false, error: "Wallet letters in auth code do not match the wallet address" };
+        return { 
+            isValid: false, 
+            error: `Wallet letters mismatch. Auth code: ${wallet10Letters.toLowerCase()}, Wallet (pos ${walletStartingLetterNumber}): ${actualWalletLetters.toLowerCase()}, Full wallet: ${walletAddress}` 
+        };
     }
 
     return { isValid: true };
