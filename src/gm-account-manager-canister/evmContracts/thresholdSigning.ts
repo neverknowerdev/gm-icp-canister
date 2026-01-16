@@ -1,5 +1,7 @@
 import { call, IDL, Principal } from 'azle';
 import { keccak_256 } from '@noble/hashes/sha3.js';
+import { secp256k1 } from '@noble/curves/secp256k1.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 
 // Access ic from global scope (available in ICP canister runtime)
 declare const ic: any;
@@ -35,7 +37,7 @@ export function setDerivationPath(path: Uint8Array[]): void {
 export async function getPublicKey(): Promise<Uint8Array> {
     try {
         const derivationPathBytes = derivationPath.map(p => Array.from(p));
-        
+
         // Get the canister's own principal
         // If ic is not available (e.g., in tests), use empty array (None)
         // In Candid, Opt(Principal) is represented as Principal[] (Some) or [] (None)
@@ -143,38 +145,38 @@ export async function signWithThresholdEcdsa(data: Uint8Array): Promise<Uint8Arr
 }
 
 /**
- * Derives Ethereum address from ECDSA public key
- * The address is the last 20 bytes of keccak_256 hash of the public key
- * @param publicKey - The public key bytes (typically 65 bytes with 0x04 prefix, or 64 bytes without)
- * @returns Ethereum address as hex string with 0x prefix
+ * Derives Ethereum address from public key (handles compressed/uncompressed keys)
+ * @param publicKey - The public key bytes (compressed 33 bytes, or uncompressed 64/65 bytes)
+ * @returns Ethereum address as hex string with 0x prefix (checksummed)
  */
-export function deriveEthereumAddress(publicKey: Uint8Array): string {
-    // Remove 0x04 prefix if present (first byte)
-    let keyBytes: Uint8Array;
-    if (publicKey.length === 65 && publicKey[0] === 0x04) {
-        keyBytes = publicKey.slice(1); // Remove prefix, keep 64 bytes
-    } else if (publicKey.length === 64) {
-        keyBytes = publicKey; // Already 64 bytes
-    } else if (publicKey.length === 33) {
-        // Compressed key - would need to decompress, but for now assume it's already uncompressed
-        throw new Error('Compressed public keys not supported. Expected 64 or 65 bytes.');
-    } else {
-        throw new Error(`Invalid public key length: ${publicKey.length} (expected 64 or 65 bytes)`);
+function deriveEthereumAddress(publicKey: Uint8Array): string {
+    // Decompress if needed and get uncompressed 65-byte key (0x04 + x + y)
+    // @ts-ignore - Point exists at runtime on the ECDSA wrapper
+    const pub65b = secp256k1.Point.fromBytes(publicKey).toBytes(false); // false = uncompressed
+
+    // Hash the 64 bytes (x + y, without 0x04 prefix)
+    const hashed = keccak_256(pub65b.subarray(1, 65));
+
+    // Take last 20 bytes and convert to hex
+    const addressBytes = hashed.slice(-20);
+    const addrHex = '0x' + bytesToHex(addressBytes);
+
+    // Add checksum (EIP-55)
+    return addChecksum(addrHex);
+}
+
+/**
+ * Adds EIP-55 checksum to an Ethereum address
+ */
+function addChecksum(addr: string): string {
+    const addrLower = addr.toLowerCase().replace('0x', '');
+    const hash = bytesToHex(keccak_256(new TextEncoder().encode(addrLower)));
+    let checksummed = '0x';
+    for (let i = 0; i < addrLower.length; i++) {
+        const hi = parseInt(hash[i], 16);
+        checksummed += hi > 7 ? addrLower[i].toUpperCase() : addrLower[i];
     }
-
-    // Hash with keccak_256
-    const hash = keccak_256(keyBytes);
-
-    // Take last 20 bytes (Ethereum address)
-    const addressBytes = hash.slice(-20);
-
-    // Convert to hex string with 0x prefix
-    let address = '0x';
-    for (let i = 0; i < addressBytes.length; i++) {
-        address += addressBytes[i].toString(16).padStart(2, '0');
-    }
-
-    return address;
+    return checksummed;
 }
 
 // Cache for EVM wallet address (computed once during canister initialization)
@@ -183,7 +185,7 @@ let cachedEvmWalletAddress: string | null = null;
 /**
  * Gets the Ethereum wallet address derived from the threshold key's public key
  * Uses cached value if available, otherwise computes it
- * @returns Ethereum address as hex string with 0x prefix
+ * @returns Ethereum address as hex string with 0x prefix (checksummed)
  */
 export async function getEthereumAddress(): Promise<string> {
     // Return cached value if available
@@ -193,8 +195,9 @@ export async function getEthereumAddress(): Promise<string> {
 
     // Compute and cache the address
     const publicKey = await getPublicKey();
-    cachedEvmWalletAddress = deriveEthereumAddress(publicKey);
-    return cachedEvmWalletAddress;
+    const derivedAddress = deriveEthereumAddress(publicKey);
+    cachedEvmWalletAddress = derivedAddress;
+    return derivedAddress;
 }
 
 /**

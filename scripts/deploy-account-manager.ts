@@ -86,31 +86,6 @@ function hexToBytes(hex: string): Uint8Array {
     return bytes;
 }
 
-// Validate required environment variables
-function validateEnvVars(): void {
-    const missing: string[] = [];
-
-    if (!TWITTER_BEARER_TOKEN) missing.push('TWITTER_BEARER_TOKEN');
-    if (!TWITTER_TWEET_FETCH_URL) missing.push('TWITTER_TWEET_FETCH_URL');
-    if (!TWITTER_HEADER_NAME) missing.push('TWITTER_HEADER_NAME');
-    if (!FARCASTER_API_KEY) missing.push('FARCASTER_API_KEY');
-
-    if (missing.length > 0) {
-        console.error('❌ Missing required environment variables:');
-        missing.forEach(v => console.error(`   - ${v}`));
-        console.error('\nPlease set these environment variables before running the script.');
-        process.exit(1);
-    }
-
-    // Warn about missing contract addresses
-    if (!BASE_MAINNET_ACCOUNT_MANAGER) {
-        console.warn('⚠️  Base Mainnet AccountManager address not set. You can set it later.');
-    }
-    if (!WORLDCHAIN_ACCOUNT_MANAGER) {
-        console.warn('⚠️  WorldChain AccountManager address not set. You can set it later.');
-    }
-}
-
 /**
  * Execute a dfx command and return the output
  */
@@ -431,8 +406,21 @@ function formatOptText(value: string | undefined): string {
 
 /**
  * Set contract addresses configuration
+ * Validates required env vars: BASE_MAINNET_ACCOUNT_MANAGER or WORLDCHAIN_ACCOUNT_MANAGER
  */
 function setContractAddresses(): void {
+    // Validate at least one contract address is set
+    if (!BASE_MAINNET_ACCOUNT_MANAGER && !WORLDCHAIN_ACCOUNT_MANAGER) {
+        throw new Error('Missing required environment variables: BASE_MAINNET_ACCOUNT_MANAGER or WORLDCHAIN_ACCOUNT_MANAGER');
+    }
+
+    if (!BASE_MAINNET_ACCOUNT_MANAGER) {
+        console.warn('⚠️  BASE_MAINNET_ACCOUNT_MANAGER not set, skipping Base Mainnet config');
+    }
+    if (!WORLDCHAIN_ACCOUNT_MANAGER) {
+        console.warn('⚠️  WORLDCHAIN_ACCOUNT_MANAGER not set, skipping WorldChain config');
+    }
+
     console.log('📝 Setting contract addresses...');
 
     try {
@@ -462,13 +450,19 @@ function setContractAddresses(): void {
 /**
  * Set Twitter configuration with encrypted secrets
  * All fields are encrypted for security
+ * Validates required env vars: TWITTER_BEARER_TOKEN
  */
 function setTwitterConfig(publicKeyHex: string): void {
+    // Validate required environment variables
+    if (!TWITTER_BEARER_TOKEN) {
+        throw new Error('Missing required environment variable: TWITTER_BEARER_TOKEN');
+    }
+
     console.log('🔐 Encrypting Twitter configuration...');
 
     const encryptedTweetFetchURL = encryptSecret(TWITTER_TWEET_FETCH_URL, publicKeyHex);
     const encryptedHeaderName = encryptSecret(TWITTER_HEADER_NAME, publicKeyHex);
-    const encryptedBearerToken = encryptSecret(TWITTER_BEARER_TOKEN!, publicKeyHex);
+    const encryptedBearerToken = encryptSecret(TWITTER_BEARER_TOKEN, publicKeyHex);
 
     console.log('📝 Setting Twitter configuration...');
 
@@ -491,11 +485,17 @@ function setTwitterConfig(publicKeyHex: string): void {
 
 /**
  * Set Farcaster configuration with encrypted secrets
+ * Validates required env vars: FARCASTER_API_KEY
  */
 function setFarcasterConfig(publicKeyHex: string): void {
+    // Validate required environment variables
+    if (!FARCASTER_API_KEY) {
+        throw new Error('Missing required environment variable: FARCASTER_API_KEY');
+    }
+
     console.log('🔐 Encrypting Farcaster secrets...');
 
-    const encryptedApiKey = encryptSecret(FARCASTER_API_KEY!, publicKeyHex);
+    const encryptedApiKey = encryptSecret(FARCASTER_API_KEY, publicKeyHex);
 
     console.log('📝 Setting Farcaster configuration...');
 
@@ -522,9 +522,6 @@ async function main(): Promise<void> {
     console.log('🚀 GM Account Manager Canister Deployment Script');
     console.log('================================================\n');
 
-    // Validate environment variables
-    validateEnvVars();
-
     try {
         // Step 1: Show current balances
         showBalances();
@@ -544,12 +541,12 @@ async function main(): Promise<void> {
         // setContractAddresses();
 
         // Step 6: Set Twitter configuration with encrypted secrets
-        console.log('\n🐦 Configuring Twitter...');
-        setTwitterConfig(publicKey);
+        // console.log('\n🐦 Configuring Twitter...');
+        // setTwitterConfig(publicKey);
 
         // Step 7: Set Farcaster configuration with encrypted secrets
-        console.log('\n🔮 Configuring Farcaster...');
-        setFarcasterConfig(publicKey);
+        // console.log('\n🔮 Configuring Farcaster...');
+        // setFarcasterConfig(publicKey);
 
         console.log('\n✅ Deployment and configuration complete!');
         console.log('\n📊 Summary:');

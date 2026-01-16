@@ -5,6 +5,7 @@
 
 import { call, IDL, Principal } from 'azle';
 import { keccak_256 } from '@noble/hashes/sha3.js';
+import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 
 const MANAGEMENT_CANISTER = Principal.fromText('aaaaa-aa');
@@ -124,25 +125,38 @@ export async function getPublicKey(): Promise<Uint8Array> {
 }
 
 /**
- * Derives Ethereum address from ECDSA public key
- * The address is the last 20 bytes of keccak256 hash of the public key
+ * Derives Ethereum address from public key (handles compressed/uncompressed keys)
+ * @param publicKey - The public key bytes (compressed 33 bytes, or uncompressed 64/65 bytes)
+ * @returns Ethereum address as hex string with 0x prefix (checksummed)
  */
-export function deriveEthereumAddress(publicKey: Uint8Array): string {
-    let keyBytes: Uint8Array;
-    if (publicKey.length === 65 && publicKey[0] === 0x04) {
-        keyBytes = publicKey.slice(1);
-    } else if (publicKey.length === 64) {
-        keyBytes = publicKey;
-    } else if (publicKey.length === 33) {
-        throw new Error('Compressed public keys not supported. Expected 64 or 65 bytes.');
-    } else {
-        throw new Error(`Invalid public key length: ${publicKey.length} (expected 64 or 65 bytes)`);
-    }
-
-    const hash = keccak_256(keyBytes);
-    const addressBytes = hash.slice(-20);
+function deriveEthereumAddress(publicKey: Uint8Array): string {
+    // Decompress if needed and get uncompressed 65-byte key (0x04 + x + y)
+    // @ts-ignore - Point exists at runtime on the ECDSA wrapper
+    const pub65b = secp256k1.Point.fromBytes(publicKey).toBytes(false); // false = uncompressed
     
-    return '0x' + bytesToHex(addressBytes);
+    // Hash the 64 bytes (x + y, without 0x04 prefix)
+    const hashed = keccak_256(pub65b.subarray(1, 65));
+    
+    // Take last 20 bytes and convert to hex
+    const addressBytes = hashed.slice(-20);
+    const addrHex = '0x' + bytesToHex(addressBytes);
+    
+    // Add checksum (EIP-55)
+    return addChecksum(addrHex);
+}
+
+/**
+ * Adds EIP-55 checksum to an Ethereum address
+ */
+function addChecksum(addr: string): string {
+    const addrLower = addr.toLowerCase().replace('0x', '');
+    const hash = bytesToHex(keccak_256(new TextEncoder().encode(addrLower)));
+    let checksummed = '0x';
+    for (let i = 0; i < addrLower.length; i++) {
+        const hi = parseInt(hash[i], 16);
+        checksummed += hi > 7 ? addrLower[i].toUpperCase() : addrLower[i];
+    }
+    return checksummed;
 }
 
 /**
