@@ -133,14 +133,14 @@ function deriveEthereumAddress(publicKey: Uint8Array): string {
     // Decompress if needed and get uncompressed 65-byte key (0x04 + x + y)
     // @ts-ignore - Point exists at runtime on the ECDSA wrapper
     const pub65b = secp256k1.Point.fromBytes(publicKey).toBytes(false); // false = uncompressed
-    
+
     // Hash the 64 bytes (x + y, without 0x04 prefix)
     const hashed = keccak_256(pub65b.subarray(1, 65));
-    
+
     // Take last 20 bytes and convert to hex
     const addressBytes = hashed.slice(-20);
     const addrHex = '0x' + bytesToHex(addressBytes);
-    
+
     // Add checksum (EIP-55)
     return addChecksum(addrHex);
 }

@@ -3,12 +3,12 @@ import { processEvent } from './eventProcessor';
 import { initContracts } from './evmContracts/config';
 import { getUser, getUserByTwitterId, getUserByFarcasterId, getTwitterUsers as getTwitterUsersFromStore, getFarcasterUsers as getFarcasterUsersFromStore } from './userManagement/userStore';
 import { getEthereumAddress, getCachedEthereumAddress, setCachedEthereumAddress } from './evmContracts/thresholdSigning';
-import { initializeScanner, scheduleScanner } from './scanner/scannerScheduler';
+import { getScanDelaySeconds, markScannerScheduled, isScannerScheduled } from './scanner/scannerScheduler';
 import { scanAllChains } from './scanner/transactionScanner';
 import { initTwitterConfig } from './verification/twitterVerification';
 import { initFarcasterConfig } from './verification/farcasterVerification';
 import { Chain, isValidChain } from './utils/types';
-import { initializeCleanupScheduler, scheduleCleanup } from './storage/storageCleanerScheduler';
+import { getCleanupDelaySeconds, markCleanupScheduled, isCleanupScheduled } from './storage/storageCleanerScheduler';
 import { cleanStorage } from './storage/storageCleaner';
 import { initializeEncryption, getPublicKey, decryptSecret } from './encryption';
 import { getTransactionStatus } from './storage/transactionTracker';
@@ -23,27 +23,72 @@ interface ContractsConfig {
 }
 
 export default class {
-    constructor() {
-        // Initialize scanner on canister creation
-        try {
-            initializeScanner();
-        } catch (error: any) {
-            console.error(`Error initializing scanner: ${error}`);
-        }
+    // Constructor runs during Azle build (bundling phase) in Node.js, before deployment.
+    // IC runtime (globalThis._azleIc) is only available after deployment on the IC.
+    // Therefore, all initialization that uses StableBTreeMap, setTimer, etc. must happen
+    // in @init/@postUpgrade hooks, which run after the canister is deployed.
+    constructor() { }
 
-        // Initialize storage cleanup scheduler on canister creation
+    /**
+     * Schedule the scanner timer
+     */
+    private scheduleScanner(): void {
         try {
-            initializeCleanupScheduler();
+            const delaySeconds = getScanDelaySeconds();
+            setTimer(delaySeconds, () => {
+                this.runScannerCallback();
+            });
+            markScannerScheduled();
+            console.log(`Scanner scheduled for next run in ${delaySeconds / 60} minutes`);
         } catch (error: any) {
-            console.error(`Error initializing storage cleanup scheduler: ${error}`);
+            console.error(`Error scheduling scanner: ${error}`);
         }
+    }
 
-        // Initialize encryption key pair on canister creation
+    /**
+     * Schedule the cleanup timer
+     */
+    private scheduleCleanup(): void {
         try {
-            initializeEncryption();
+            const delaySeconds = getCleanupDelaySeconds();
+            setTimer(delaySeconds, () => {
+                this.runCleanupCallback();
+            });
+            markCleanupScheduled();
+            console.log(`Cleanup scheduled for next run in ${delaySeconds / 3600} hours`);
         } catch (error: any) {
-            console.error(`Error initializing encryption: ${error}`);
+            console.error(`Error scheduling cleanup: ${error}`);
         }
+    }
+
+    /**
+     * Internal callback that runs the scan and reschedules
+     */
+    private runScannerCallback(): void {
+        console.log('Scanner callback fired - scanning for unprocessed transactions...');
+        scanAllChains()
+            .then(() => {
+                this.scheduleScanner();
+            })
+            .catch((error: any) => {
+                console.error(`Error in scanner callback: ${error}`);
+                this.scheduleScanner();
+            });
+    }
+
+    /**
+     * Internal callback that runs cleanup and reschedules
+     */
+    private runCleanupCallback(): void {
+        console.log('Cleanup callback fired - cleaning storage...');
+        cleanStorage()
+            .then(() => {
+                this.scheduleCleanup();
+            })
+            .catch((error: any) => {
+                console.error(`Error in cleanup callback: ${error}`);
+                this.scheduleCleanup();
+            });
     }
 
     /**
@@ -73,21 +118,47 @@ export default class {
     }
 
     /**
+     * Initialize all scheduled tasks and encryption
+     * Called from @init and @postUpgrade hooks
+     */
+    private initializeScheduledTasks(): void {
+        // Initialize encryption key pair
+        try {
+            initializeEncryption();
+        } catch (error: any) {
+            console.error(`Error initializing encryption: ${error}`);
+        }
+
+        // Initialize EVM wallet address
+        this.initializeEvmWalletAddress();
+
+        // Schedule scanner if not already scheduled
+        if (!isScannerScheduled()) {
+            this.scheduleScanner();
+        }
+
+        // Schedule cleanup if not already scheduled
+        if (!isCleanupScheduled()) {
+            this.scheduleCleanup();
+        }
+    }
+
+    /**
      * Init hook - runs on first canister deployment
-     * Used to initialize async operations like computing EVM wallet address
+     * Used to initialize async operations and schedule timers
      */
     @init([])
     init(): void {
-        this.initializeEvmWalletAddress();
+        this.initializeScheduledTasks();
     }
 
     /**
      * Post-upgrade hook - runs after canister upgrade
-     * Used to initialize async operations like computing EVM wallet address
+     * Used to initialize async operations and schedule timers
      */
     @postUpgrade([])
     postUpgrade(): void {
-        this.initializeEvmWalletAddress();
+        this.initializeScheduledTasks();
     }
 
     /**
@@ -96,16 +167,7 @@ export default class {
      */
     @update([], IDL.Null)
     async scannerCallback(): Promise<null> {
-        console.log('Scanner callback fired - scanning for unprocessed transactions...');
-        try {
-            await scanAllChains();
-            // Reschedule for next interval
-            scheduleScanner();
-        } catch (error: any) {
-            console.error(`Error in scanner callback: ${error}`);
-            // Still reschedule even if there's an error
-            scheduleScanner();
-        }
+        this.runScannerCallback();
         return null;
     }
 
@@ -115,16 +177,7 @@ export default class {
      */
     @update([], IDL.Null)
     async cleanupCallback(): Promise<null> {
-        console.log('Cleanup callback fired - cleaning storage...');
-        try {
-            await cleanStorage();
-            // Reschedule for next day
-            scheduleCleanup();
-        } catch (error: any) {
-            console.error(`Error in cleanup callback: ${error}`);
-            // Still reschedule even if there's an error
-            scheduleCleanup();
-        }
+        this.runCleanupCallback();
         return null;
     }
 

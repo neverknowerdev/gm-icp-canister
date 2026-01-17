@@ -1,14 +1,14 @@
 // Storage Cleaner Scheduler - manages the daily storage cleanup
+// NOTE: setTimer must be called from @init/@postUpgrade hooks, not from module initialization
 
-const CLEANUP_CALLBACK_METHOD = 'cleanupCallback';
 const CLEANUP_HOUR_UTC = 1; // 1:00 AM UTC
 
 let isScheduled = false;
 
 /**
- * Calculate absolute timestamp (nanoseconds since Unix epoch) for next 1:00 AM UTC
+ * Calculate delay in seconds until next 1:00 AM UTC
  */
-function getNext1AMTimestamp(): bigint {
+export function getCleanupDelaySeconds(): number {
     const now = Date.now();
     const nowDate = new Date(now);
 
@@ -21,51 +21,16 @@ function getNext1AMTimestamp(): bigint {
         next1AM.setUTCDate(next1AM.getUTCDate() + 1);
     }
 
-    // Convert to nanoseconds since Unix epoch
-    const timestampNs = BigInt(next1AM.getTime() * 1_000_000);
-    return timestampNs;
+    // Convert to seconds
+    const delayMs = next1AM.getTime() - now;
+    return Math.ceil(delayMs / 1000);
 }
 
 /**
- * Schedule the next cleanup run
+ * Mark cleanup as scheduled (called after setTimer succeeds in index.ts)
  */
-export function scheduleCleanup(): void {
-    try {
-        const timestampNs = getNext1AMTimestamp();
-
-        // Use ic.setTimer to schedule cleanup callback
-        if (typeof (globalThis as any).ic !== 'undefined' && (globalThis as any).ic.setTimer) {
-            (globalThis as any).ic.setTimer(timestampNs, CLEANUP_CALLBACK_METHOD);
-            isScheduled = true;
-
-            const delaySeconds = Number(timestampNs - BigInt(Date.now() * 1_000_000)) / 1_000_000_000;
-            const delayHours = delaySeconds / 3600;
-            console.log(`Storage cleanup scheduled for next 1:00 AM UTC (in ${delayHours.toFixed(2)} hours)`);
-        } else {
-            console.warn(`[NOTE] Call ic.setTimer(${timestampNs}) to call ${CLEANUP_CALLBACK_METHOD} method`);
-            console.warn(`Storage cleanup will not run automatically - timer functionality not available`);
-        }
-    } catch (error: any) {
-        console.error(`Error scheduling storage cleanup: ${error}`);
-    }
-}
-
-/**
- * Initialize the storage cleanup scheduler
- */
-export function initializeCleanupScheduler(): void {
-    if (isScheduled) {
-        console.log('Storage cleanup scheduler already initialized');
-        return;
-    }
-
-    try {
-        scheduleCleanup();
-        console.log('Storage cleanup scheduler initialized');
-    } catch (error: any) {
-        console.error(`Error initializing storage cleanup scheduler: ${error}`);
-        throw error;
-    }
+export function markCleanupScheduled(): void {
+    isScheduled = true;
 }
 
 /**
