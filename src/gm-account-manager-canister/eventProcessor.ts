@@ -101,7 +101,7 @@ export async function processEvent(
         // 4. Check if transaction is directly to our contract OR if events from our contracts are in the logs
         // (Account abstraction wallets proxy transactions, so the 'to' address won't match)
         const toAddress = receipt.to?.toLowerCase();
-        
+
         // Ensure allowedContracts is an array
         if (!Array.isArray(allowedContracts)) {
             console.error(`allowedContracts is not an array: ${typeof allowedContracts}`);
@@ -158,20 +158,12 @@ export async function processEvent(
                 // This is a verification request event (VerifyTwitterByAuthCodeRequested, VerifyFarcasterRequested)
                 // These handlers will call createOrUpdateUser and process resulting events
                 console.log(`Dispatching verification event ${event.eventName} to handler`);
-                try {
-                    await VERIFICATION_EVENT_HANDLERS[event.eventName](event, chain, receipt.from);
-                } catch (error: any) {
-                    console.error(`Error handling verification event ${event.eventName}: ${error}`);
-                }
+                await VERIFICATION_EVENT_HANDLERS[event.eventName](event, chain, receipt.from);
             } else if (USER_EVENT_NAMES.includes(event.eventName)) {
                 // This is a user event (UserCreated, WalletLinked, etc.)
                 // Process it directly to update memory
                 console.log(`Processing user event ${event.eventName}`);
-                try {
-                    await processUserEvent(event, chain);
-                } catch (error: any) {
-                    console.error(`Error processing user event ${event.eventName}: ${error}`);
-                }
+                await processUserEvent(event, chain);
             } else {
                 console.log(`No handler found for event ${event.eventName}. Ignoring.`);
             }
