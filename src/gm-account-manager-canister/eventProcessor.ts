@@ -9,7 +9,8 @@ import {
     markTransactionProcessed,
     isTransactionInProcessing,
     markTransactionInProcessing,
-    removeTransactionFromProcessing
+    removeTransactionFromProcessing,
+    markTransactionError
 } from './storage/transactionTracker';
 import { processUserEvent } from './userEvents';
 import { getLastProcessedBlock, updateLastProcessedBlock } from './storage/blockTracker';
@@ -181,6 +182,9 @@ export async function processEvent(
 
         console.log(`Transaction ${transactionId} processing completed at block ${processedBlockNumber}`);
     } catch (error: any) {
+        // Mark transaction with error
+        const errorMessage = error?.message || error?.toString() || String(error);
+        markTransactionError(chain, transactionId, errorMessage);
         // Log error but don't re-throw (we want to clean up in-processing state)
         console.error(`Error processing transaction ${transactionId}: ${error}`);
         throw error;

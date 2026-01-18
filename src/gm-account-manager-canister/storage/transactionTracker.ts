@@ -12,6 +12,10 @@ const processedTransactions = new StableBTreeMap<string, number>(7);
 // This is temporary state, so we keep it as Map (not persisted)
 const transactionsInProcessing = new Map<Chain, Set<string>>();
 
+// Store transaction errors by chain: Map<Chain, Map<txHash, errorString>>
+// This is temporary state, so we keep it as Map (not persisted)
+const transactionErrors = new Map<Chain, Map<string, string>>();
+
 /**
  * Create composite key for transaction: `${chain}:${txHash}`
  */
@@ -30,6 +34,16 @@ function getChainInProcessing(chain: Chain): Set<string> {
 }
 
 /**
+ * Get or create the error map for a chain
+ */
+function getChainErrors(chain: Chain): Map<string, string> {
+    if (!transactionErrors.has(chain)) {
+        transactionErrors.set(chain, new Map<string, string>());
+    }
+    return transactionErrors.get(chain)!;
+}
+
+/**
  * Check if a transaction has been processed on a specific chain
  */
 export function isTransactionProcessed(chain: Chain, txHash: string): boolean {
@@ -40,10 +54,13 @@ export function isTransactionProcessed(chain: Chain, txHash: string): boolean {
 
 /**
  * Mark a transaction as processed with its block number
+ * Also removes the transaction from error map if it exists
  */
 export function markTransactionProcessed(chain: Chain, txHash: string, blockNumber: number): void {
     const key = getTransactionKey(chain, txHash);
     processedTransactions.insert(key, blockNumber);
+    // Remove from error map if it exists
+    removeTransactionError(chain, txHash);
 }
 
 /**
@@ -203,22 +220,94 @@ export function removeProcessedTransaction(chain: Chain, txHash: string): boolea
 /**
  * Transaction status type
  */
-export type TransactionStatus = 'processed' | 'in_progress' | 'unprocessed';
+export type TransactionStatus = 'processed' | 'in_progress' | 'error' | 'unprocessed';
+
+/**
+ * Transaction status result with optional error message
+ */
+export type TransactionStatusResult = {
+    status: TransactionStatus;
+    error?: string;
+};
 
 /**
  * Get the status of a transaction on a specific chain
  * Returns:
  * - 'processed' if the transaction has been fully processed
  * - 'in_progress' if the transaction is currently being processed
+ * - 'error' if the transaction encountered an error during processing
  * - 'unprocessed' if the transaction has not been processed yet
  */
-export function getTransactionStatus(chain: Chain, txHash: string): TransactionStatus {
+export function getTransactionStatus(chain: Chain, txHash: string): TransactionStatusResult {
     if (isTransactionProcessed(chain, txHash)) {
-        return 'processed';
+        return { status: 'processed' };
     }
     if (isTransactionInProcessing(chain, txHash)) {
-        return 'in_progress';
+        return { status: 'in_progress' };
     }
-    return 'unprocessed';
+    const error = getTransactionError(chain, txHash);
+    if (error !== null) {
+        return { status: 'error', error };
+    }
+    return { status: 'unprocessed' };
+}
+
+/**
+ * Mark a transaction error
+ */
+export function markTransactionError(chain: Chain, txHash: string, error: string): void {
+    const chainErrors = getChainErrors(chain);
+    chainErrors.set(txHash.toLowerCase(), error);
+}
+
+/**
+ * Get transaction error if it exists
+ * Returns null if no error
+ */
+export function getTransactionError(chain: Chain, txHash: string): string | null {
+    const chainErrors = getChainErrors(chain);
+    const error = chainErrors.get(txHash.toLowerCase());
+    return error !== undefined ? error : null;
+}
+
+/**
+ * Remove a transaction from error map
+ */
+export function removeTransactionError(chain: Chain, txHash: string): void {
+    const chainErrors = getChainErrors(chain);
+    chainErrors.delete(txHash.toLowerCase());
+}
+
+/**
+ * Clear all transaction errors for a specific chain (useful for testing)
+ */
+export function clearTransactionErrors(chain: Chain): void {
+    transactionErrors.delete(chain);
+}
+
+/**
+ * Clear all transaction errors for all chains (useful for testing)
+ */
+export function clearAllTransactionErrors(): void {
+    transactionErrors.clear();
+}
+
+/**
+ * Get count of transactions with errors for a specific chain
+ */
+export function getErrorTransactionCount(chain: Chain): number {
+    const chainErrors = getChainErrors(chain);
+    return chainErrors.size;
+}
+
+/**
+ * Get count of transactions with errors across all chains
+ */
+export function getTotalErrorTransactionCount(): number {
+    let total = 0;
+    for (const chainErrors of transactionErrors.values()) {
+        total += chainErrors.size;
+    }
+    return total;
 }
 

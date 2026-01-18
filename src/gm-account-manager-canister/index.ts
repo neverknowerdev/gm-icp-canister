@@ -11,7 +11,7 @@ import { Chain, isValidChain } from './utils/types';
 import { getCleanupDelaySeconds, markCleanupScheduled, isCleanupScheduled } from './storage/storageCleanerScheduler';
 import { cleanStorage } from './storage/storageCleaner';
 import { initializeEncryption, getPublicKey, decryptSecret } from './encryption';
-import { getTransactionStatus } from './storage/transactionTracker';
+import { getTransactionStatus as getTransactionStatusFromTracker, TransactionStatusResult } from './storage/transactionTracker';
 
 interface ContractsConfig {
     contracts: {
@@ -496,14 +496,17 @@ export default class {
      * Get the processing status of a transaction
      * @param chainId - The chain ID (e.g., 8453 for Base Mainnet)
      * @param txHash - The transaction hash
-     * @returns Transaction status: 'processed', 'in_progress', or 'unprocessed'
+     * @returns Transaction status result with status and optional error message
      */
-    @query([IDL.Nat32, IDL.Text], IDL.Text)
-    getTransactionStatus(chainId: Chain, txHash: string): string {
+    @query([IDL.Nat32, IDL.Text], IDL.Record({
+        status: IDL.Text,
+        error: IDL.Opt(IDL.Text)
+    }))
+    getTransactionStatus(chainId: Chain, txHash: string): TransactionStatusResult {
         if (!isValidChain(chainId)) {
-            return 'unprocessed';
+            return { status: 'unprocessed' };
         }
-        return getTransactionStatus(chainId, txHash);
+        return getTransactionStatusFromTracker(chainId, txHash);
     }
 }
 
