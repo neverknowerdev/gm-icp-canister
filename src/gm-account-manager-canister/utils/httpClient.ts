@@ -8,6 +8,8 @@ export interface HttpRequestOptions {
     body?: string;
     maxResponseBytes?: bigint;
     transformMethodName?: string;
+    /** Optional. When true, use replicated mode (multiple replicas); when false, non-replicated. Omit for default. EXPERIMENTAL per IC spec. */
+    is_replicated?: boolean;
 }
 
 export interface HttpResponse {
@@ -38,7 +40,7 @@ export async function httpRequest(
         if (!url || typeof url !== 'string' || (!url.startsWith('http://') && !url.startsWith('https://'))) {
             throw new Error(`Invalid URL: ${url}`);
         }
-        
+
         // Convert headers to the format expected by ICP
         // In Candid, record { text; text } with unnamed fields is encoded as a tuple
         const headers: Array<[string, string]> = [];
@@ -52,13 +54,13 @@ export async function httpRequest(
         // In Azle, Opt(T) is encoded as [] for None or [value] for Some when using IDL.Vec()
         const maxResponseBytes = options.maxResponseBytes || 2_000_000n;
         const maxResponseBytesOpt = maxResponseBytes ? [maxResponseBytes] : [];
-        
+
         // Opt(transform) - use [] for None, or [value] for Some
         const transformOpt = options.transformMethodName && typeof ic !== 'undefined' && ic.id ? [{
             function: [ic.id(), options.transformMethodName] as [any, string],
             context: Array.from(Uint8Array.from([])),
         }] : [];
-        
+
         // Encode HTTP method as variant - use lowercase variant names
         let methodVariant: any;
         switch (options.method) {
@@ -77,13 +79,17 @@ export async function httpRequest(
             default:
                 throw new Error(`Unsupported HTTP method: ${options.method}`);
         }
-        
+
+        // Opt(bool) for is_replicated: [] = omit (default), [true] or [false] = use replicated or non-replicated mode
+        const isReplicatedOpt = options.is_replicated !== undefined ? [options.is_replicated] : [];
+
         const httpRequestParams = {
             url: url,
             method: methodVariant,
             headers: headers,
             max_response_bytes: maxResponseBytesOpt,
             transform: transformOpt,
+            is_replicated: isReplicatedOpt,
         };
 
         // Define the IDL types for http_request
@@ -103,6 +109,7 @@ export async function httpRequest(
                 function: IDL.Tuple(IDL.Principal, IDL.Text),
                 context: IDL.Vec(IDL.Nat8),
             })),
+            is_replicated: IDL.Vec(IDL.Bool), // Opt(bool) - replicated vs non-replicated mode (EXPERIMENTAL)
         });
 
         const HttpResponse = IDL.Record({
@@ -136,29 +143,35 @@ export async function httpRequest(
 
 /**
  * Makes a GET request
+ * @param is_replicated Optional. When true, use replicated mode; when false, non-replicated. Omit for default. EXPERIMENTAL.
  */
 export async function httpGet(
     url: string,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    is_replicated?: boolean
 ): Promise<{ body: string; status: number }> {
     return httpRequest(url, {
         method: 'GET',
         headers: headers,
+        is_replicated,
     });
 }
 
 /**
  * Makes a POST request
+ * @param is_replicated Optional. When true, use replicated mode; when false, non-replicated. Omit for default. EXPERIMENTAL.
  */
 export async function httpPost(
     url: string,
     body: string,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    is_replicated?: boolean
 ): Promise<{ body: string; status: number }> {
     return httpRequest(url, {
         method: 'POST',
         headers: headers,
         body: body,
+        is_replicated,
     });
 }
 

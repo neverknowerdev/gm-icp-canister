@@ -8,6 +8,8 @@ export interface HttpRequestOptions {
     body?: string;
     maxResponseBytes?: bigint;
     transformMethodName?: string;
+    /** Optional. When true, use replicated mode; when false, non-replicated. Omit for default. EXPERIMENTAL per IC spec. */
+    is_replicated?: boolean;
 }
 
 export interface HttpResponse {
@@ -53,7 +55,7 @@ export async function httpRequest(
         }
 
         // Prepare the HTTP request
-        const httpRequest = {
+        const httpRequest: Record<string, any> = {
             url: url,
             method: {
                 GET: null,
@@ -69,6 +71,9 @@ export async function httpRequest(
                 context: Uint8Array.from([]),
             } : undefined,
         };
+        if (options.is_replicated !== undefined) {
+            httpRequest.is_replicated = options.is_replicated;
+        }
 
         // Make the HTTP request using ic.http_request
         const response = await ic.httpRequest(httpRequest);
@@ -90,14 +95,17 @@ export async function httpRequest(
 
 /**
  * Makes a GET request
+ * @param is_replicated Optional. When true, use replicated mode; when false, non-replicated. Omit for default. EXPERIMENTAL.
  */
 export async function httpGet(
     url: string,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    is_replicated?: boolean
 ): Promise<{ body: string; status: number }> {
     return httpRequest(url, {
         method: 'GET',
         headers: headers,
+        is_replicated,
     });
 }
 
@@ -139,16 +147,19 @@ export async function httpGetWithRetries(
 
 /**
  * Makes a POST request
+ * @param is_replicated Optional. When true, use replicated mode; when false, non-replicated. Omit for default. EXPERIMENTAL.
  */
 export async function httpPost(
     url: string,
     body: string,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    is_replicated?: boolean
 ): Promise<{ body: string; status: number }> {
     return httpRequest(url, {
         method: 'POST',
         headers: headers,
         body: body,
+        is_replicated,
     });
 }
 
