@@ -80,8 +80,8 @@ export async function httpRequest(
                 throw new Error(`Unsupported HTTP method: ${options.method}`);
         }
 
-        // Opt(bool) for is_replicated: [] = omit (default), [true] or [false] = use replicated or non-replicated mode
-        const isReplicatedOpt = options.is_replicated !== undefined ? [options.is_replicated] : [];
+        // Opt(bool) for is_replicated: default true (replicated mode), or [false] for non-replicated
+        const isReplicatedOpt = options.is_replicated !== undefined ? [options.is_replicated] : [true];
 
         const httpRequestParams = {
             url: url,

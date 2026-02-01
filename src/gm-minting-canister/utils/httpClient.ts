@@ -71,9 +71,8 @@ export async function httpRequest(
                 context: Uint8Array.from([]),
             } : undefined,
         };
-        if (options.is_replicated !== undefined) {
-            httpRequest.is_replicated = options.is_replicated;
-        }
+        // Default to true (replicated mode) when not specified
+        httpRequest.is_replicated = options.is_replicated !== undefined ? options.is_replicated : true;
 
         // Make the HTTP request using ic.http_request
         const response = await ic.httpRequest(httpRequest);
@@ -114,20 +113,22 @@ export async function httpGet(
  * @param url The URL to request
  * @param headers Optional headers
  * @param maxRetries Number of retry attempts (default: 1, meaning 2 total attempts)
+ * @param is_replicated Optional. When true, use replicated mode; when false, non-replicated. Omit for default. EXPERIMENTAL.
  * @returns Response body and status
  * @throws Error if all retry attempts fail
  */
 export async function httpGetWithRetries(
     url: string,
     headers?: Record<string, string>,
-    maxRetries: number = 1
+    maxRetries: number = 1,
+    is_replicated?: boolean
 ): Promise<{ body: string; status: number }> {
     let lastError: any = null;
     const totalAttempts = maxRetries + 1; // Initial attempt + retries
 
     for (let attempt = 1; attempt <= totalAttempts; attempt++) {
         try {
-            return await httpGet(url, headers);
+            return await httpGet(url, headers, is_replicated);
         } catch (error) {
             lastError = error;
             console.error(`HTTP GET error (attempt ${attempt}/${totalAttempts}) for ${url}:`, error);

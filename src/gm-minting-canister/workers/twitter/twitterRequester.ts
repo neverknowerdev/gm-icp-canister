@@ -64,8 +64,8 @@ export class TwitterRequester {
                 'Idempotency-Key': this.generateIdempotencyKey(),
             };
 
-            // Use httpGetWithRetries with 1 retry (2 total attempts)
-            const response = await httpGetWithRetries(url.toString(), headers, 1);
+            // Use httpGetWithRetries with 1 retry (2 total attempts). Non-replicated for search-by-query URL.
+            const response = await httpGetWithRetries(url.toString(), headers, 1, false);
             const data = JSON.parse(response.body);
             return this.parseTwitterResponse(data, cursor);
         } catch (error) {
