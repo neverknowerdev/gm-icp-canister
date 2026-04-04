@@ -1,0 +1,26 @@
+[
+    {
+        "type": "function",
+        "name": "startMinting",
+        "inputs": [],
+        "outputs": []
+    },
+    {
+        "type": "function",
+        "name": "mintForUsers",
+        "inputs": [
+            { "name": "wallets", "type": "address[]" },
+            { "name": "amounts", "type": "uint256[]" }
+        ],
+        "outputs": []
+    },
+    {
+        "type": "function",
+        "name": "finishMinting",
+        "inputs": [
+            { "name": "mintingDayTimestamp", "type": "uint32" },
+            { "name": "runningHash", "type": "string" }
+        ],
+        "outputs": []
+    }
+]

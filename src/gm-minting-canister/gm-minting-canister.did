@@ -1,0 +1,62 @@
+service: () -> {
+    // Internal callbacks (called by ICP timer system)
+    timerCallback: () -> (null);
+    retryWorkerCallback: () -> (null);
+
+    // Configuration
+    initializeTwitter: (
+        record {
+            bearerTokenEncrypted: text;
+            optimizedAPISecretKeyEncrypted: text;
+            authHeaderName: text;
+        },
+        text,
+        text
+    ) -> (null);
+
+    initializeFarcaster: (
+        record {
+            apiKeyEncrypted: text;
+            bearerTokenEncrypted: opt text;
+        },
+        text
+    ) -> (null);
+
+    addChainContract: (record {
+        chain: text;
+        chainId: nat32;
+        accountManagement: record { contractAddress: text };
+        gmCoin: record { contractAddress: text };
+    }) -> (null);
+
+    setAccountManagerCanisterId: (principal) -> (null);
+
+    // Manual trigger
+    manualStartMinting: () -> (null);
+
+    // Tweet queries
+    getTweetsByMintingDay: (text) -> (vec record {
+        tweetId: text;
+        twitterUserId: text;
+        userId: text;
+        username: text;
+        likesCount: nat32;
+        text: text;
+        parsed_at: nat64;
+    }) query;
+
+    getTweetById: (text) -> (opt record {
+        tweetId: text;
+        twitterUserId: text;
+        userId: text;
+        username: text;
+        likesCount: nat32;
+        text: text;
+        parsed_at: nat64;
+        status: text;
+    }) query;
+
+    // Wallet and encryption
+    canisterEvmWalletAddress: () -> (text) query;
+    encryptionPublicKey: () -> (text) query;
+}

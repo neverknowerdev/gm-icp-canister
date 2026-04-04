@@ -1,20 +1,30 @@
-import { verifyFarcaster } from '../../src/events/verifyFarcaster';
-import { ParsedEvent } from '../../src/utils/types';
-import * as userStore from '../../src/userManagement/userStore';
-import * as smartContract from '../../src/utils/smartContract';
-import * as config from '../../src/utils/config';
+import { verifyFarcaster } from '../../src/gm-account-manager-canister/verification/verifyFarcaster';
+import { ParsedEvent, CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from '../../src/gm-account-manager-canister/utils/types';
+import * as userStore from '../../src/gm-account-manager-canister/userManagement/userStore';
+import * as smartContract from '../../src/gm-account-manager-canister/evmContracts/smartContract';
+import * as config from '../../src/gm-account-manager-canister/evmContracts/config';
+import * as atomicCounter from '../../src/gm-account-manager-canister/storage/atomicCounter';
+import * as evmRpc from '../../src/gm-account-manager-canister/evmContracts/evmRpc';
+import * as eventDecoder from '../../src/gm-account-manager-canister/evmContracts/eventDecoder';
+import * as userEvents from '../../src/gm-account-manager-canister/userEvents';
+import * as farcasterVerification from '../../src/gm-account-manager-canister/verification/farcasterVerification';
 
 // Mock dependencies
-jest.mock('../../src/userManagement/userStore');
-jest.mock('../../src/utils/smartContract');
-jest.mock('../../src/utils/config');
+jest.mock('../../src/gm-account-manager-canister/userManagement/userStore');
+jest.mock('../../src/gm-account-manager-canister/evmContracts/smartContract');
+jest.mock('../../src/gm-account-manager-canister/evmContracts/config');
+jest.mock('../../src/gm-account-manager-canister/storage/atomicCounter');
+jest.mock('../../src/gm-account-manager-canister/evmContracts/evmRpc');
+jest.mock('../../src/gm-account-manager-canister/evmContracts/eventDecoder');
+jest.mock('../../src/gm-account-manager-canister/userEvents');
+jest.mock('../../src/gm-account-manager-canister/verification/farcasterVerification');
 
 describe('verifyFarcaster Handler', () => {
     const mockEvent: ParsedEvent = {
         eventName: 'VerifyFarcasterRequested',
         contractAddress: '0xContract',
         args: {
-            topic1: '0x00000000000000000000000000000000000000000000000000000000000000c8', // 200
+            authToken: 'farcaster_auth_token_456', // Auth token from event
         },
         logIndex: 0n,
         transactionHash: '0xtxhash',
@@ -23,179 +33,141 @@ describe('verifyFarcaster Handler', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        (config.getContractAddress as jest.Mock).mockReturnValue('0xContract');
+        (config.getContracts as jest.Mock).mockReturnValue({ accountManager: '0xContract', GMCoin: '' });
+        (config.getContractAddresses as jest.Mock).mockReturnValue(['0xContract']);
+        (atomicCounter.generateNextUserId as jest.Mock).mockResolvedValue(1n);
+        (smartContract.callCreateOrUpdateUser as jest.Mock).mockResolvedValue('0xtxhash123');
+        (evmRpc.fetchTransactionReceipt as jest.Mock).mockResolvedValue({
+            status: 1n,
+            logs: [],
+        });
+        (eventDecoder.extractEvents as jest.Mock).mockReturnValue([]);
+        // Mock Farcaster verification to return Farcaster ID 200
+        (farcasterVerification.verifyFarcasterAuthBigInt as jest.Mock).mockResolvedValue(200n);
     });
 
     it('should create new user when Farcaster ID is unique', async () => {
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(null);
-        (userStore.getUserByWallet as jest.Mock).mockReturnValue(null);
-        (userStore.createUser as jest.Mock).mockReturnValue({
-            userId: 1n,
-            chains: ['Base Mainnet'],
-            twitterId: 0n,
-            farcasterId: 200n,
-            isVerified: false,
-            verifications: [],
-            primaryWallet: '0xwallet',
-            wallets: [{ wallet: '0xwallet', chain: 'Base Mainnet' }],
-        });
-        (smartContract.callCreateUser as jest.Mock).mockResolvedValue(true);
 
-        await verifyFarcaster(mockEvent, 'Base Mainnet', '0xWallet');
+        await verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
 
-        expect(userStore.createUser).toHaveBeenCalledWith('0xwallet', 'Base Mainnet', 0n, 200n);
-        expect(smartContract.callCreateUser).toHaveBeenCalledWith(
+        expect(atomicCounter.generateNextUserId).toHaveBeenCalled();
+        expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalledWith(
             '0xContract',
-            'Base Mainnet',
+            CHAIN_BASE_MAINNET,
             1n,
             '0xwallet',
             0n,
-            200n
+            200n,
+            [{ wallet: '0xwallet', chain: CHAIN_BASE_MAINNET }]
         );
+        expect(evmRpc.fetchTransactionReceipt).toHaveBeenCalledWith(CHAIN_BASE_MAINNET, '0xtxhash123');
+        expect(eventDecoder.extractEvents).toHaveBeenCalled();
     });
 
     it('should add wallet to existing user when Farcaster ID exists', async () => {
         const existingUser = {
             userId: 1n,
-            chains: ['Base Mainnet'],
+            chains: [CHAIN_BASE_MAINNET],
             twitterId: 0n,
             farcasterId: 200n,
             isVerified: false,
             verifications: [],
             primaryWallet: '0xoldwallet',
-            wallets: [{ wallet: '0xoldwallet', chain: 'Base Mainnet' }],
+            primaryChain: CHAIN_BASE_MAINNET,
+            wallets: [{ wallet: '0xoldwallet', chain: CHAIN_BASE_MAINNET }],
         };
 
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(existingUser);
-        (userStore.addWalletToUser as jest.Mock).mockReturnValue(true);
-        (userStore.getUser as jest.Mock).mockReturnValue({
-            ...existingUser,
-            chains: ['Base Mainnet', 'WorldChain'],
-            wallets: [
-                { wallet: '0xoldwallet', chain: 'Base Mainnet' },
-                { wallet: '0xwallet', chain: 'WorldChain' },
-            ],
-        });
-        (smartContract.callAddUser as jest.Mock).mockResolvedValue(true);
 
-        await verifyFarcaster(mockEvent, 'WorldChain', '0xWallet');
+        await verifyFarcaster(mockEvent, CHAIN_WORLDCHAIN, '0xWallet');
 
-        expect(userStore.addWalletToUser).toHaveBeenCalledWith(1n, '0xwallet', 'WorldChain');
-        expect(smartContract.callAddUser).toHaveBeenCalled();
+        expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
+        expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalledWith(
+            '0xContract',
+            CHAIN_WORLDCHAIN,
+            1n,
+            '0xwallet',
+            0n,
+            200n,
+            [{ wallet: '0xwallet', chain: CHAIN_WORLDCHAIN }]
+        );
     });
 
     it('should update Farcaster ID when wallet exists but no Farcaster ID', async () => {
-        const existingUser = {
-            userId: 1n,
-            chains: ['Base Mainnet'],
-            twitterId: 0n,
-            farcasterId: 0n,
-            isVerified: false,
-            verifications: [],
-            primaryWallet: '0xwallet',
-            wallets: [{ wallet: '0xwallet', chain: 'Base Mainnet' }],
-        };
-
+        // In new architecture, we check Farcaster ID first, then wallet
+        // If Farcaster ID doesn't exist, we generate new userId
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(null);
-        (userStore.getUserByWallet as jest.Mock).mockReturnValue(existingUser);
-        (userStore.updateUserFarcasterId as jest.Mock).mockReturnValue(true);
-        (userStore.getUser as jest.Mock).mockReturnValue({
-            ...existingUser,
-            farcasterId: 200n,
-        });
-        (smartContract.callAddUser as jest.Mock).mockResolvedValue(true);
 
-        await verifyFarcaster(mockEvent, 'Base Mainnet', '0xWallet');
+        await verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWallet');
 
-        expect(userStore.updateUserFarcasterId).toHaveBeenCalledWith(1n, 200n);
-        expect(smartContract.callAddUser).toHaveBeenCalled();
+        expect(atomicCounter.generateNextUserId).toHaveBeenCalled();
+        expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalled();
     });
 
-    it('should handle invalid Farcaster ID', async () => {
+    it('should throw error on invalid auth token', async () => {
         const invalidEvent: ParsedEvent = {
             ...mockEvent,
-            args: { topic1: '0x0000000000000000000000000000000000000000000000000000000000000000' }, // 0
+            args: {}, // No auth token
         };
 
-        await verifyFarcaster(invalidEvent, 'Base Mainnet', '0xWallet');
+        await expect(verifyFarcaster(invalidEvent, CHAIN_BASE_MAINNET, '0xWallet'))
+            .rejects.toThrow('No auth token found in event');
 
-        expect(userStore.createUser).not.toHaveBeenCalled();
-        expect(smartContract.callCreateUser).not.toHaveBeenCalled();
+        expect(farcasterVerification.verifyFarcasterAuthBigInt).not.toHaveBeenCalled();
+        expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
+        expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
     });
 
-    it('should handle missing topic1 in event args', async () => {
-        const invalidEvent: ParsedEvent = {
-            ...mockEvent,
-            args: {},
-        };
+    it('should propagate verification failure error', async () => {
+        (farcasterVerification.verifyFarcasterAuthBigInt as jest.Mock).mockRejectedValue(
+            new Error('Invalid auth token')
+        );
 
-        await verifyFarcaster(invalidEvent, 'Base Mainnet', '0xWallet');
+        await expect(verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWallet'))
+            .rejects.toThrow('Invalid auth token');
 
-        expect(userStore.createUser).not.toHaveBeenCalled();
-        expect(smartContract.callCreateUser).not.toHaveBeenCalled();
+        expect(farcasterVerification.verifyFarcasterAuthBigInt).toHaveBeenCalled();
+        expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
+        expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
     });
 
-    it('should handle failed wallet addition gracefully', async () => {
-        const existingUser = {
-            userId: 1n,
-            chains: ['Base Mainnet'],
-            twitterId: 0n,
-            farcasterId: 200n,
-            isVerified: false,
-            verifications: [],
-            primaryWallet: '0xoldwallet',
-            wallets: [{ wallet: '0xoldwallet', chain: 'Base Mainnet' }],
-        };
+    it('should throw error on failed transaction', async () => {
+        // In new architecture, wallet addition happens via events from contract
+        // This test checks that transaction failure is handled
+        (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(null);
+        (smartContract.callCreateOrUpdateUser as jest.Mock).mockResolvedValue(null);
 
-        (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(existingUser);
-        (userStore.addWalletToUser as jest.Mock).mockReturnValue(false); // Wallet addition fails
+        await expect(verifyFarcaster(mockEvent, CHAIN_WORLDCHAIN, '0xWallet'))
+            .rejects.toThrow('Failed to call createOrUpdateUser');
 
-        await verifyFarcaster(mockEvent, 'WorldChain', '0xWallet');
-
-        expect(userStore.addWalletToUser).toHaveBeenCalledWith(1n, '0xwallet', 'WorldChain');
-        expect(smartContract.callAddUser).not.toHaveBeenCalled();
+        expect(evmRpc.fetchTransactionReceipt).not.toHaveBeenCalled();
     });
 
     it('should handle case-insensitive wallet addresses', async () => {
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(null);
-        (userStore.getUserByWallet as jest.Mock).mockReturnValue(null);
-        (userStore.createUser as jest.Mock).mockReturnValue({
-            userId: 1n,
-            chains: ['Base Mainnet'],
-            twitterId: 0n,
-            farcasterId: 200n,
-            isVerified: false,
-            verifications: [],
-            primaryWallet: '0xwallet',
-            wallets: [{ wallet: '0xwallet', chain: 'Base Mainnet' }],
-        });
-        (smartContract.callCreateUser as jest.Mock).mockResolvedValue(true);
 
-        await verifyFarcaster(mockEvent, 'Base Mainnet', '0xWALLET'); // Different case
+        await verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWALLET'); // Different case
 
-        expect(userStore.createUser).toHaveBeenCalledWith('0xwallet', 'Base Mainnet', 0n, 200n);
-        expect(smartContract.callCreateUser).toHaveBeenCalled();
+        expect(smartContract.callCreateOrUpdateUser).toHaveBeenCalledWith(
+            '0xContract',
+            CHAIN_BASE_MAINNET,
+            1n,
+            '0xwallet', // Should be lowercase
+            0n,
+            200n,
+            [{ wallet: '0xwallet', chain: CHAIN_BASE_MAINNET }]
+        );
     });
 
-    it('should handle missing contract address gracefully', async () => {
-        (config.getContractAddress as jest.Mock).mockReturnValue(null);
+    it('should throw error on missing contract address', async () => {
+        (config.getContracts as jest.Mock).mockReturnValue(null);
         (userStore.getUserByFarcasterId as jest.Mock).mockReturnValue(null);
-        (userStore.getUserByWallet as jest.Mock).mockReturnValue(null);
-        (userStore.createUser as jest.Mock).mockReturnValue({
-            userId: 1n,
-            chains: ['Base Mainnet'],
-            twitterId: 0n,
-            farcasterId: 200n,
-            isVerified: false,
-            verifications: [],
-            primaryWallet: '0xwallet',
-            wallets: [{ wallet: '0xwallet', chain: 'Base Mainnet' }],
-        });
 
-        await verifyFarcaster(mockEvent, 'Base Mainnet', '0xWallet');
+        await expect(verifyFarcaster(mockEvent, CHAIN_BASE_MAINNET, '0xWallet'))
+            .rejects.toThrow('No contract address configured for chain');
 
-        expect(userStore.createUser).toHaveBeenCalled();
-        expect(smartContract.callCreateUser).not.toHaveBeenCalled(); // Should not call if no contract
+        expect(atomicCounter.generateNextUserId).not.toHaveBeenCalled();
+        expect(smartContract.callCreateOrUpdateUser).not.toHaveBeenCalled();
     });
 });
-

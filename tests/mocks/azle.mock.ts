@@ -1,6 +1,8 @@
 // Mock for Azle's StableBTreeMap and other IC-specific APIs
 // This allows unit testing without the IC runtime
 
+import * as crypto from 'crypto';
+
 // Global storage for all mock instances, keyed by storage ID
 const mockStorage: Map<number, Map<string, any>> = new Map();
 
@@ -13,13 +15,17 @@ export class MockStableBTreeMap<K, V> {
         return mockStorage.get(this._id)! as Map<string, V>;
     }
 
-    constructor(private _id: number) {}
+    constructor(private _id: number) { }
 
-    get(key: K): V[] {
+    /**
+     * Get a value from the map
+     * Returns the value if found, undefined if not found
+     * This matches Azle 0.33+ API which returns V | undefined
+     */
+    get(key: K): V | undefined {
         const keyStr = this.serializeKey(key);
         const map = this.getStorageMap();
-        const value = map.get(keyStr);
-        return value !== undefined ? [value] : [];
+        return map.get(keyStr);
     }
 
     insert(key: K, value: V): void {
@@ -110,6 +116,17 @@ export function clearMockStorageById(id: number): void {
 
 export const StableBTreeMap = MockStableBTreeMap;
 
+// Mock ic object with rawRand using Node.js crypto
+export const ic = {
+    /**
+     * Returns 32 bytes of randomness from the IC
+     * In tests, we use Node.js crypto.randomBytes
+     */
+    rawRand: async (): Promise<Uint8Array> => {
+        return new Uint8Array(crypto.randomBytes(32));
+    },
+};
+
 // Mock other Azle exports as needed
 export const query = () => (target: any, propertyKey: string, descriptor: PropertyDescriptor) => descriptor;
 export const update = () => (target: any, propertyKey: string, descriptor: PropertyDescriptor) => descriptor;
@@ -134,4 +151,3 @@ export const call = async (canisterId: any, method: string, options: any) => {
     // Mock implementation
     return { Ok: [{ logs: [] }] };
 };
-

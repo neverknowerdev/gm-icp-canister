@@ -1,4 +1,5 @@
-import { fetchTransactionReceipt } from '../../src/utils/evmRpc';
+import { fetchTransactionReceipt } from '../../src/gm-account-manager-canister/evmContracts/evmRpc';
+import { CHAIN_BASE_MAINNET, CHAIN_WORLDCHAIN } from '../../src/gm-account-manager-canister/utils/types';
 import * as azle from 'azle';
 
 // Mock azle
@@ -50,7 +51,7 @@ describe('EVM RPC Utilities', () => {
 
             (azle.call as jest.Mock).mockResolvedValue(mockResult);
 
-            const result = await fetchTransactionReceipt('Base Mainnet', '0xtxhash');
+            const result = await fetchTransactionReceipt(CHAIN_BASE_MAINNET, '0xtxhash');
 
             expect(result).not.toBeNull();
             expect(result?.transactionHash).toBe('0xtxhash');
@@ -67,22 +68,7 @@ describe('EVM RPC Utilities', () => {
 
             (azle.call as jest.Mock).mockResolvedValue(mockResult);
 
-            const result = await fetchTransactionReceipt('WorldChain', '0xtxhash');
-
-            expect(result).not.toBeNull();
-            expect(result?.transactionHash).toBe('0xtxhash');
-        });
-
-        it('should fetch transaction receipt successfully for Monad', async () => {
-            const mockResult = {
-                Consistent: {
-                    Ok: [mockReceipt],
-                },
-            };
-
-            (azle.call as jest.Mock).mockResolvedValue(mockResult);
-
-            const result = await fetchTransactionReceipt('Monad', '0xtxhash');
+            const result = await fetchTransactionReceipt(CHAIN_WORLDCHAIN, '0xtxhash');
 
             expect(result).not.toBeNull();
             expect(result?.transactionHash).toBe('0xtxhash');
@@ -97,7 +83,7 @@ describe('EVM RPC Utilities', () => {
 
             (azle.call as jest.Mock).mockResolvedValue(mockResult);
 
-            const result = await fetchTransactionReceipt('Base Mainnet', '0xtxhash');
+            const result = await fetchTransactionReceipt(CHAIN_BASE_MAINNET, '0xtxhash');
 
             expect(result).toBeNull();
         });
@@ -111,7 +97,7 @@ describe('EVM RPC Utilities', () => {
 
             (azle.call as jest.Mock).mockResolvedValue(mockResult);
 
-            const result = await fetchTransactionReceipt('Base Mainnet', '0xtxhash');
+            const result = await fetchTransactionReceipt(CHAIN_BASE_MAINNET, '0xtxhash');
 
             expect(result).toBeNull();
         });
@@ -130,7 +116,7 @@ describe('EVM RPC Utilities', () => {
 
             (azle.call as jest.Mock).mockResolvedValue(mockResult);
 
-            const result = await fetchTransactionReceipt('Base Mainnet', '0xtxhash');
+            const result = await fetchTransactionReceipt(CHAIN_BASE_MAINNET, '0xtxhash');
 
             expect(result).toBeNull();
         });
@@ -149,7 +135,7 @@ describe('EVM RPC Utilities', () => {
 
             (azle.call as jest.Mock).mockResolvedValue(mockResult);
 
-            const result = await fetchTransactionReceipt('Base Mainnet', '0xtxhash');
+            const result = await fetchTransactionReceipt(CHAIN_BASE_MAINNET, '0xtxhash');
 
             expect(result).not.toBeNull();
             expect(result?.transactionHash).toBe('0xtxhash');
@@ -162,7 +148,7 @@ describe('EVM RPC Utilities', () => {
 
             (azle.call as jest.Mock).mockResolvedValue(mockResult);
 
-            const result = await fetchTransactionReceipt('Base Mainnet', '0xtxhash');
+            const result = await fetchTransactionReceipt(CHAIN_BASE_MAINNET, '0xtxhash');
 
             expect(result).toBeNull();
         });
@@ -170,7 +156,7 @@ describe('EVM RPC Utilities', () => {
         it('should handle call errors', async () => {
             (azle.call as jest.Mock).mockRejectedValue(new Error('Network error'));
 
-            const result = await fetchTransactionReceipt('Base Mainnet', '0xtxhash');
+            const result = await fetchTransactionReceipt(CHAIN_BASE_MAINNET, '0xtxhash');
 
             expect(result).toBeNull();
         });
@@ -178,7 +164,7 @@ describe('EVM RPC Utilities', () => {
         it('should throw error for unsupported chain', async () => {
             await expect(
                 fetchTransactionReceipt('UnsupportedChain' as any, '0xtxhash')
-            ).rejects.toThrow('Unsupported chain: UnsupportedChain');
+            ).rejects.toThrow('Unsupported chain ID: UnsupportedChain');
         });
 
         it('should parse logs correctly', async () => {
@@ -207,7 +193,7 @@ describe('EVM RPC Utilities', () => {
 
             (azle.call as jest.Mock).mockResolvedValue(mockResult);
 
-            const result = await fetchTransactionReceipt('Base Mainnet', '0xtxhash');
+            const result = await fetchTransactionReceipt(CHAIN_BASE_MAINNET, '0xtxhash');
 
             expect(result).not.toBeNull();
             expect(result?.logs).toHaveLength(1);
@@ -243,7 +229,7 @@ describe('EVM RPC Utilities', () => {
 
             (azle.call as jest.Mock).mockResolvedValue(mockResult);
 
-            const result = await fetchTransactionReceipt('Base Mainnet', '0xtxhash');
+            const result = await fetchTransactionReceipt(CHAIN_BASE_MAINNET, '0xtxhash');
 
             expect(result).not.toBeNull();
             expect(result?.to).toBeUndefined();

@@ -1,377 +1,236 @@
-# GM ICP Canister — Event Processor
+# GM ICP Canisters
 
-An ICP canister built with Azle (TypeScript) that processes EVM smart-contract events from multiple chains, similar to Gelato Web3 Functions.
+ICP canister system built with Azle (TypeScript) for processing EVM smart-contract events and managing token minting.
 
-## 🎯 Overview
+## Overview
 
-This canister acts as an event processor that:
-- Reacts to EVM smart-contract events from Base Mainnet, WorldChain, and Monad
-- Fetches and verifies transactions using the EVM RPC canister
-- Routes events to dedicated handlers
-- Maintains global user state across multiple chains
-- Enforces global uniqueness for Twitter and Farcaster IDs
+Two main canisters:
 
-## 📦 Canister Information
+1. **Account Manager Canister** (`gm-account-manager-canister`)
+   - Processes EVM events from Base Mainnet and WorldChain
+   - Handles Twitter and Farcaster verification
+   - Maintains global user state across chains
+   - Canister ID: `ylges-qaaaa-aaaal-qtlsq-cai` (mainnet)
 
-- **Canister ID**: `pbyvv-piaaa-aaaal-qs6cq-cai`
-- **Candid UI**: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=pbyvv-piaaa-aaaal-qs6cq-cai
-- **Cycles Wallet**: `pgztb-cqaaa-aaaal-qs6ca-cai`
+2. **Minting Canister** (`gm-minting-canister`)
+   - Processes daily minting operations
+   - Queries account manager for verified users
+   - Mints tokens to smart contracts
 
-## 🏗️ Architecture
-
-### Code Structure
-
-```
-src/
-├── index.ts                    # Main canister entry point
-├── eventProcessor.ts           # Event processing logic
-├── events/
-│   ├── verifyTwitter.ts        # Twitter verification handler
-│   └── verifyFarcaster.ts      # Farcaster verification handler
-├── userManagement/
-│   ├── userStore.ts            # User storage operations
-│   └── userTypes.ts           # User data types
-└── utils/
-    ├── evmRpc.ts              # EVM RPC canister interaction
-    ├── eventParser.ts          # Event log parsing
-    ├── types.ts                # Common types
-    ├── config.ts               # Configuration management
-    └── smartContract.ts        # Smart contract interaction
-```
-
-### Core Features
-
-- **Event-Driven Architecture**: Processes EVM events from multiple chains
-- **Modular Design**: Clean separation of concerns, easy to extend
-- **Global User Identity**: Cross-chain user reconciliation with monotonic userId counter
-- **Stable Storage**: Persistent state using StableBTreeMap
-- **Configuration-Driven**: Runtime configuration via `setConfig` method
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
-
-- Node.js >= 16.0.0
-- dfx SDK installed
+- Node.js >= 18.0.0
+- dfx SDK >= 0.15.0
 - ICP tokens for cycles
-- Cycles wallet configured
 
 ### Installation
-
 ```bash
-npm install
+yarn install
 ```
 
 ### Build
-
 ```bash
-# Generate config and build
-npm run build
-
-# Or for local development
-npm run build:local
+yarn build
 ```
 
-## ⚙️ Configuration
+## Deployment
 
-The canister requires configuration with your contract addresses and event signatures. Since Azle canisters can't read files at runtime, configuration is set via the `setConfig` method.
-
-### Step 1: Generate Config Template
+### Automated Deployment (Recommended)
 
 ```bash
-npm run generate-config
+# Set environment variables
+export TWITTER_BEARER_TOKEN="your-token"
+export FARCASTER_API_KEY="your-key"
+export BASE_MAINNET_ACCOUNT_MANAGER="0x..."
+export WORLDCHAIN_ACCOUNT_MANAGER="0x..."
+
+# Deploy to mainnet
+npx ts-node scripts/deploy-account-manager.ts ic mainnet
 ```
 
-This creates `canister-config.json` from the template.
+The script handles:
+- Building and deploying
+- Encryption of sensitive credentials
+- Configuration setup
 
-### Step 2: Update Config File
+### Manual Deployment
 
-Edit `canister-config.json` with your values:
-
-```json
-{
-  "contracts": {
-    "Base Mainnet": ["0xYourContractAddress"],
-    "WorldChain": ["0xYourContractAddress"],
-    "Monad": ["0xYourContractAddress"]
-  },
-  "eventSignatures": {
-    "VerifyFarcasterRequested": "0xYourKeccak256Hash",
-    "VerifyTwitterByAuthCodeRequested": "0xYourKeccak256Hash"
-  }
-}
-```
-
-### Step 3: Set Config in Canister
-
-**Option A: Use Candid UI (Recommended)**
-
-1. Go to: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=pbyvv-piaaa-aaaal-qs6cq-cai
-2. Find `setConfig` method
-3. Fill in the form with your config values
-4. Click "Call"
-
-**Option B: Use dfx Command**
-
+#### 1. Deploy Canister
 ```bash
-dfx canister call --network ic --identity mainnet gm-icp-canister setConfig '(
-  record {
-    contracts = record {
-      "Base Mainnet" = vec { "0xYourContractAddress" };
-      "WorldChain" = vec {};
-      "Monad" = vec {};
-    };
-    eventSignatures = record {
-      "VerifyFarcasterRequested" = "0xYourEventSignature";
-      "VerifyTwitterByAuthCodeRequested" = "0xYourEventSignature";
-    };
-  }
+dfx build gm-account-manager-canister --network ic --identity mainnet
+dfx deploy gm-account-manager-canister --network ic --identity mainnet
+```
+
+#### 2. Get Encryption Public Key
+```bash
+dfx canister call --network ic --identity mainnet gm-account-manager-canister encryptionPublicKey
+```
+
+#### 3. Set Contract Addresses
+```bash
+dfx canister call --network ic --identity mainnet gm-account-manager-canister setContractAddresses '(
+    record {
+        contracts = record {
+            "Base Mainnet" = record {
+                accountManager = "0xYourAddress";
+                GMCoin = null;
+            };
+            "WorldChain" = record {
+                accountManager = "0xYourAddress";
+                GMCoin = null;
+            };
+        };
+    }
 )'
 ```
 
-### Getting Event Signatures
+#### 4. Set Twitter Config (Encrypted)
+Use the deployment script which handles encryption, or encrypt manually using X25519 + AES-GCM.
 
-To get the keccak256 hash of your event signature:
+#### 5. Set Farcaster Config (Encrypted)
+Same encryption process as Twitter config.
 
-```javascript
-// Using ethers.js
-ethers.utils.id("VerifyFarcasterRequested(address,uint256)")
+## Canister Methods
 
-// Using web3
-web3.utils.keccak256("VerifyFarcasterRequested(address,uint256)")
-```
+### Account Manager Canister
 
-Or use an online tool: https://emn178.github.io/online-tools/keccak_256.html
+| Method | Type | Description |
+|--------|------|-------------|
+| `setContractAddresses` | update | Set contract addresses for chains |
+| `setTwitterConfig` | update | Set Twitter API config (encrypted) |
+| `setFarcasterConfig` | update | Set Farcaster API config (encrypted) |
+| `handleEvent` | update | Process transaction events (chainId: nat32, txHash: text) |
+| `getUser` | query | Get user by userId |
+| `getUserByTwitterId` | query | Get user by Twitter ID |
+| `getUserByFarcasterId` | query | Get user by Farcaster ID |
+| `getUsers` | query | Get multiple users |
+| `getTwitterUsers` | query | Get Twitter users (paginated) |
+| `getFarcasterUsers` | query | Get Farcaster users (paginated) |
+| `getTransactionStatus` | query | Get tx processing status |
+| `evmWalletAddress` | query | Get canister's EVM wallet address |
+| `encryptionPublicKey` | query | Get X25519 public key for encryption |
+| `initEvmWalletAddress` | update | Initialize EVM wallet address |
 
-**Important**: Event signatures must match exactly, including parameter types and order.
-
-## 📤 Deployment
-
-### First Time Setup
-
-1. **Create Cycles Wallet** (if you don't have one):
-   ```bash
-   # Create wallet canister
-   dfx ledger create-canister $(dfx identity get-principal --identity mainnet) --amount 0.25 --network ic --identity mainnet
-   
-   # Deploy wallet code (replace <CANISTER_ID> with the ID from above)
-   dfx identity deploy-wallet <CANISTER_ID> --network ic --identity mainnet
-   
-   # Set as wallet
-   dfx identity set-wallet <CANISTER_ID> --network ic --identity mainnet
-   ```
-
-2. **Fund Wallet with Cycles**:
-   ```bash
-   # Convert ICP to cycles
-   dfx cycles convert --amount=0.5 --network ic --identity mainnet
-   
-   # Transfer cycles to wallet
-   dfx cycles top-up <WALLET_ID> 2000000000000 --network ic --identity mainnet
-   ```
-
-### Deploy
-
+### Transaction Status
 ```bash
-# Deploy to mainnet
-dfx deploy --network ic --identity mainnet gm-icp-canister
-
-# Or use the deployment script
-./scripts/deploy.sh ic mainnet
+dfx canister call --network ic --identity mainnet gm-account-manager-canister getTransactionStatus '(8453, "0x123...")'
 ```
+Returns: `"processed"`, `"in_progress"`, or `"unprocessed"`
 
-## 🧪 Testing
-
-### Test Event Processing
-
-```bash
-dfx canister call --network ic --identity mainnet gm-icp-canister handleEvent '("Base Mainnet", "0xd026c13df3cc54176089cce0b6cff245d6fe8d901beb9664207bc188db076970")'
-```
-
-### View Logs
-
-```bash
-dfx canister logs --network ic --identity mainnet gm-icp-canister
-```
-
-### Check Canister Status
-
-```bash
-dfx canister status gm-icp-canister --network ic --identity mainnet
-```
-
-## 💰 Managing Cycles
-
-### Check Balances
-
-```bash
-# Check ICP balance
-dfx ledger balance --network ic --identity mainnet
-
-# Check cycles balance (account)
-dfx cycles balance --network ic --identity mainnet
-
-# Check wallet cycles balance
-dfx wallet balance --network ic --identity mainnet
-```
-
-### Transfer Cycles
-
-```bash
-# Convert ICP to cycles
-dfx cycles convert --amount=0.5 --network ic --identity mainnet
-
-# Transfer cycles to a canister
-dfx cycles top-up <CANISTER_ID> <AMOUNT> --network ic --identity mainnet
-
-# Transfer cycles to wallet
-dfx cycles top-up <WALLET_ID> <AMOUNT> --network ic --identity mainnet
-```
-
-### Quick Balance Check Script
-
-```bash
-./scripts/check-balance.sh mainnet
-```
-
-## 🔧 Core Functionality
-
-### handleEvent(chain, transactionId)
-
-Main entry point for processing events.
-
-**Parameters:**
-- `chain`: Chain name ("Base Mainnet", "WorldChain", or "Monad")
-- `transactionId`: Transaction hash to process
-
-**Process:**
-1. Validates chain and fetches transaction receipt
-2. Verifies transaction is to an allowed contract
-3. Extracts events from transaction logs
-4. Routes events to appropriate handlers
-5. Handlers process events and update user state
+## Event Processing
 
 ### Supported Events
 
-- **VerifyTwitterByAuthCodeRequested**: Handles Twitter verification
-  - Enforces global Twitter ID uniqueness
-  - Creates new users or updates existing users
-  - Calls smart contract `createUser` or `addUser`
+**Request Events:**
+- `VerifyTwitterByAuthCodeRequested(address wallet, string authCode, string tweetID, string userID)`
+- `VerifyFarcasterRequested(address wallet, string authToken)`
 
-- **VerifyFarcasterRequested**: Handles Farcaster verification
-  - Enforces global Farcaster ID uniqueness
-  - Creates new users or updates existing users
-  - Calls smart contract `createUser` or `addUser`
+**User Events:**
+- `UserCreated(uint256 userId, address wallet, ...)`
+- `UserRemoved(uint256 userId)`
+- `SocialAccountLinked(uint256 userId, string socialType, uint256 socialId)`
+- `PrimaryWalletUpdated(uint256 userId, address wallet)`
+- `WalletLinked(uint256 userId, address wallet, string chain)`
+- `HumanVerificationUpdated(uint256 userId, bool isVerified)`
 
-## 👤 User Data Model
+### Processing Flow
 
-```typescript
-interface User {
-  userId: bigint;              // Globally unique, monotonic counter
-  chains: string[];            // Chains user is active on
-  twitterId: bigint;           // Twitter ID (globally unique)
-  farcasterId: bigint;         // Farcaster ID (globally unique)
-  isVerified: boolean;         // Verification status
-  verifications: string[];     // List of verifications
-  primaryWallet: string;       // Primary wallet address
-  wallets: Wallet[];           // All wallets across chains
-}
+1. Frontend calls contract → emits event
+2. Frontend calls canister: `handleEvent(chainId, txHash)`
+3. Canister fetches transaction receipt via EVM RPC
+4. Canister processes events and verifies social accounts
+5. Canister calls contract back with verification
+6. Contract emits user events
+7. Canister processes user events and updates state
 
-interface Wallet {
-  wallet: string;              // Wallet address
-  chain: string;               // Chain name
-}
-```
-
-### Global User ID Strategy
-
-- `userId` is globally unique across all chains
-- Uses monotonic counter (always increasing)
-- Independent of blockchain
-- Enables cross-chain user reconciliation
-
-## 🔗 Smart Contract Integration
-
-The canister calls your Solidity contracts:
-
-- **createUser(userId, wallet, twitterId, farcasterId)**: Creates a new user
-- **addUser(userId, userData)**: Updates existing user with new data
-
-**Note**: Smart contract interaction is currently stubbed. Implement actual calls in `src/utils/smartContract.ts` based on your contract ABI.
-
-## 📝 Development
-
-### Local Development
+## Testing
 
 ```bash
-# Start local replica
-dfx start --background
+# Run all tests
+yarn test
 
-# Build locally
-npm run build:local
-
-# Deploy locally
-dfx deploy
+# Run with coverage
+yarn test --coverage
 ```
 
-### Adding New Event Handlers
-
-1. Create handler file in `src/events/`
-2. Register handler in `src/eventProcessor.ts`
-3. Add event signature to config
-4. Update `src/utils/eventParser.ts` to parse the event
-
-### Project Scripts
-
-```bash
-npm run generate-config    # Generate config file from template
-npm run build              # Build for mainnet
-npm run build:local        # Build for local development
-```
-
-## 🐛 Troubleshooting
-
-### "No contracts configured"
-
-Set the configuration using `setConfig` method (see Configuration section).
-
-### "Insufficient cycles balance"
-
-1. Check wallet balance: `dfx wallet balance --network ic --identity mainnet`
-2. Convert ICP to cycles: `dfx cycles convert --amount=0.5 --network ic --identity mainnet`
-3. Transfer to wallet: `dfx cycles top-up <WALLET_ID> 2000000000000 --network ic --identity mainnet`
-
-### Build Errors
-
-- Make sure all dependencies are installed: `npm install`
-- Check that Azle version is stable (0.33.0)
-- Verify TypeScript compilation: `npx tsc --noEmit`
-
-### Canister Out of Cycles
+## Managing Cycles
 
 ```bash
 # Check canister cycles
-dfx canister status gm-icp-canister --network ic --identity mainnet
+dfx canister status gm-account-manager-canister --network ic --identity mainnet
+
+# Check wallet balance
+dfx wallet balance --network ic --identity mainnet
 
 # Top up canister
-dfx cycles top-up pbyvv-piaaa-aaaal-qs6cq-cai 1000000000000 --network ic --identity mainnet
+dfx cycles top-up <CANISTER_ID> 1000000000000 --network ic --identity mainnet
 ```
 
-## 📚 References
+## Troubleshooting
 
-- [Azle Documentation](https://demergent-labs.github.io/azle/candid_rpc.html)
-- [Azle Candid RPC Examples](https://github.com/demergent-labs/azle/tree/main/examples/stable/test/end_to_end/candid_rpc)
-- [EVM RPC Canister](https://internetcomputer.org/docs/building-apps/chain-fusion/ethereum/evm-rpc/evm-rpc-canister)
-- [Internet Computer Docs](https://internetcomputer.org/docs/current/developer-docs)
+### "Account manager canister ID not set"
+```bash
+dfx canister call gm-minting-canister setAccountManagerCanisterId '(principal "ylges-qaaaa-aaaal-qtlsq-cai")'
+```
 
-## ⚠️ Important Notes
+### EVM Wallet Address Not Initialized
+```bash
+# Initialize manually
+dfx canister call --network ic --identity mainnet gm-account-manager-canister initEvmWalletAddress
 
-- Use **stable Azle version only** (no experimental features)
-- Configuration must be set via `setConfig` after deployment
-- Event signatures must match your Solidity events exactly
-- Smart contract calls need to be implemented based on your ABI
-- Canister requires cycles for operations (monitor balance regularly)
+# Then query
+dfx canister call --network ic --identity mainnet gm-account-manager-canister evmWalletAddress
+```
 
-## 📄 License
+### Viewing Logs
 
-[Add your license here]
+The IC Dashboard doesn't show logs directly. Use:
+- Query methods to check transaction status
+- Check contract events directly on blockchain explorer
+- For local development: `dfx canister logs gm-account-manager-canister`
+
+## Technical Details
+
+### Libraries
+- **micro-eth-signer**: ABI encoding, transaction serialization
+- **@noble/hashes**: Keccak-256, SHA-256, HKDF
+- **@noble/curves**: X25519 ECDH
+- **@noble/ciphers**: AES-GCM encryption
+- **azle**: ICP TypeScript framework
+
+### Features
+- WASM compatible crypto operations
+- Threshold ECDSA signing via ICP
+- Secure secret encryption (X25519 + AES-GCM)
+- Event-driven architecture
+- Transaction deduplication
+
+## Chain IDs
+
+- Base Mainnet: `8453`
+- WorldChain: `480`
+
+## Project Structure
+
+```
+src/
+├── gm-account-manager-canister/
+│   ├── index.ts                    # Main entry point
+│   ├── eventProcessor.ts           # Event processing
+│   ├── evmContracts/               # EVM integration
+│   ├── verification/               # Social verification
+│   ├── userManagement/             # User storage
+│   ├── scanner/                    # Transaction scanner
+│   └── storage/                    # State management
+└── gm-minting-canister/
+    ├── index.ts
+    ├── minting/                    # Minting logic
+    └── workers/                    # Twitter/Farcaster workers
+```
+
+## Scripts
+
+- `scripts/deploy-account-manager.ts` - Automated deployment
+- `scripts/set-contract-addresses.sh` - Set contract addresses
+- `scripts/check-balance.sh` - Check cycles balance

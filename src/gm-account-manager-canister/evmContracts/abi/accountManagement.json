@@ -1,0 +1,197 @@
+[
+    {
+        "type": "event",
+        "name": "VerifyTwitterByAuthCodeRequested",
+        "inputs": [
+            {
+                "name": "wallet",
+                "type": "address",
+                "indexed": false
+            },
+            {
+                "name": "authCode",
+                "type": "string",
+                "indexed": false
+            },
+            {
+                "name": "tweetID",
+                "type": "string",
+                "indexed": false
+            },
+            {
+                "name": "twitterID",
+                "type": "uint256",
+                "indexed": false
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "VerifyFarcasterRequested",
+        "inputs": [
+            {
+                "name": "wallet",
+                "type": "address",
+                "indexed": true
+            },
+            {
+                "name": "authToken",
+                "type": "string",
+                "indexed": false
+            }
+        ]
+    },
+    {
+        "type": "function",
+        "name": "createOrUpdateUser",
+        "inputs": [
+            {
+                "name": "userId",
+                "type": "uint256"
+            },
+            {
+                "name": "wallet",
+                "type": "address"
+            },
+            {
+                "name": "twitterId",
+                "type": "uint256"
+            },
+            {
+                "name": "farcasterId",
+                "type": "uint256"
+            },
+            {
+                "name": "wallets",
+                "type": "address[]"
+            }
+        ],
+        "outputs": []
+    },
+    {
+        "type": "function",
+        "name": "verifyTwitter",
+        "inputs": [
+            {
+                "name": "userID",
+                "type": "string"
+            },
+            {
+                "name": "wallet",
+                "type": "address"
+            }
+        ],
+        "outputs": []
+    },
+    {
+        "type": "event",
+        "name": "UserCreated",
+        "inputs": [
+            {
+                "name": "userId",
+                "type": "uint256",
+                "indexed": true
+            },
+            {
+                "name": "wallet",
+                "type": "address",
+                "indexed": true
+            },
+            {
+                "name": "twitterId",
+                "type": "uint256",
+                "indexed": false
+            },
+            {
+                "name": "farcasterId",
+                "type": "uint256",
+                "indexed": false
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "UserRemoved",
+        "inputs": [
+            {
+                "name": "userId",
+                "type": "uint256",
+                "indexed": true
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "SocialAccountLinked",
+        "inputs": [
+            {
+                "name": "userId",
+                "type": "uint256",
+                "indexed": true
+            },
+            {
+                "name": "socialType",
+                "type": "string",
+                "indexed": true
+            },
+            {
+                "name": "socialId",
+                "type": "uint256",
+                "indexed": true
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "PrimaryWalletUpdated",
+        "inputs": [
+            {
+                "name": "userId",
+                "type": "uint256",
+                "indexed": true
+            },
+            {
+                "name": "wallet",
+                "type": "address",
+                "indexed": true
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "WalletLinked",
+        "inputs": [
+            {
+                "name": "userId",
+                "type": "uint256",
+                "indexed": true
+            },
+            {
+                "name": "wallet",
+                "type": "address",
+                "indexed": true
+            },
+            {
+                "name": "chain",
+                "type": "string",
+                "indexed": false
+            }
+        ]
+    },
+    {
+        "type": "event",
+        "name": "HumanVerificationUpdated",
+        "inputs": [
+            {
+                "name": "userId",
+                "type": "uint256",
+                "indexed": true
+            },
+            {
+                "name": "isVerified",
+                "type": "bool",
+                "indexed": false
+            }
+        ]
+    }
+]
